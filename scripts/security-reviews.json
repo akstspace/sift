@@ -1,4 +1,12 @@
 {
+  "scripts/test-tooling.py:python.lang.security.audit.dangerous-subprocess-use-audit:80b68511c87433323a4dc2f61a05f546dcd7b1a992155482da217616cfec0c22": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Installer quoting regression executes only the enumerated absolute /bin/sh, /bin/bash, and optional /bin/zsh paths with generated PATH blocks in a disposable TemporaryDirectory. All directory names and PATH cases are fixed test fixtures, including intentional shell metacharacters whose non-execution is asserted. No network, user-provided command, ambient HOME, or real shell profile is used. Running the generated shell text is necessary to test quoting rather than merely compare strings."
+  },
+  "scripts/test-tooling.py:python.lang.security.audit.dangerous-subprocess-use-audit:8c2a6541a31259412a51437aa3d08239600c52b4555ddfb6c28c03d1c1782097": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Fresh-terminal regression selects only /bin/bash or /bin/zsh from a fixed literal list. Arguments, the command sift, and environment are fixed fixtures; HOME, ZDOTDIR, rcfile, and the executable all reside in the test's disposable directory. The executable only prints SIFT_PATH_OK, stdin is disabled, and no real user profiles or external inputs are read as commands."
+  },
   "internal/sift/backup_io_test.go:go.lang.correctness.permissions.incorrect-default-permission:43be1324f84eb9a14cb624180622141a268c8b9f983b81551004953ba03b7ef3": {
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
     "reason": "Creates only backup/session directories inside testService's disposable t.TempDir. Mode 0700 is owner-only and directory search permission is necessary to create/read entries; 0600 is not a usable directory permission. No personal workspace or group/other access is involved."
