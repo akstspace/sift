@@ -2,7 +2,7 @@ import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
-const backend = 'http://127.0.0.1:' + (process.env.SIFT_PORT || '57431')
+const backend = 'http://127.0.0.1:' + (process.env.SIFT_PORT || '57432')
 const devPort = Number(process.env.SIFT_DEV_PORT || '57433')
 const devOrigin = `http://127.0.0.1:${devPort}`
 

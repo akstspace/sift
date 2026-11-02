@@ -22,9 +22,13 @@ build tags select exactly one RustFS payload. A binary built before a frontend
 change still contains the old UI until rebuilt. The Go service requires no
 external frontend server or runtime Node install in packaged use.
 
-Keep development executables separate from the installed `sift` command. Run
-`bin/sift-development serve --data .cache/development-workspace` for local work;
-do not install test builds on PATH or use the personal Sift data directory.
+Keep development executables separate from the installed `sift` command. After
+building the frontend, `make dev` builds `bin/sift-development` and serves the
+isolated `.sift-dev` workspace at `http://127.0.0.1:57432`. To use another isolated
+workspace, run `bin/sift-development serve --data .cache/development-workspace --port 57432`.
+Do not install test builds on PATH or use the personal Sift data directory.
+The installed app's default remains `127.0.0.1:57431`; development refuses an
+occupied port instead of stopping another process or silently choosing a new one.
 
 Generated embedded frontend output is ignored by Git; the original project mark
 is the only placeholder retained there before a build. Always build `web` before

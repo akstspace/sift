@@ -83,6 +83,16 @@ class LocalConnectionTests(unittest.TestCase):
             self.assertIn("scripts/package-docs.json", (ROOT / "scripts" / script).read_text())
 
 
+class DevelopmentLaunchTests(unittest.TestCase):
+    def test_development_uses_separate_executable_workspace_and_fixed_loopback_port(self):
+        commands = subprocess.check_output(["make", "--no-print-directory", "-n", "dev"], cwd=ROOT, text=True).splitlines()
+        self.assertEqual(commands, ["go build -trimpath -o bin/sift-development ./cmd/sift",
+                                    "bin/sift-development serve --data .sift-dev --port 57432"])
+        build = subprocess.check_output(["make", "--no-print-directory", "-n", "build"], cwd=ROOT, text=True)
+        self.assertIn("-o bin/sift-development", build)
+        self.assertNotIn("-o bin/sift ", build)
+
+
 class LocalReleaseNoticeTests(unittest.TestCase):
     def go_module_functions(self, root):
         source = ast.parse((ROOT / "scripts/collect-licenses.py").read_text())

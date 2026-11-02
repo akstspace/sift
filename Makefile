@@ -1,9 +1,10 @@
 .PHONY: dev build test release
 dev:
-	go run ./cmd/sift serve --data .sift-dev
+	go build -trimpath -o bin/sift-development ./cmd/sift
+	bin/sift-development serve --data .sift-dev --port 57432
 build:
 	cd web && npm ci && npm run build
-	go build -trimpath -o bin/sift ./cmd/sift
+	go build -trimpath -o bin/sift-development ./cmd/sift
 test:
 	go test -race ./...
 	cd web && npm run build && npm test

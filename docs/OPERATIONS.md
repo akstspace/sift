@@ -64,8 +64,12 @@ the actual target OS.
 
 ## Development workspaces
 
-The current local preview is `http://127.0.0.1:57433`, backed by port 57431 and
-`.cache/preview-workspace`. QA uses 57434/57432 and `.cache/qa-workspace`.
+Development uses `http://127.0.0.1:57432`, separate from the installed app's
+default port 57431. `make dev` uses the isolated `.sift-dev` workspace. The optional
+Vite UI uses port 57433 and proxies API calls to 57432 by default; `SIFT_PORT` and
+`SIFT_DEV_PORT` override the backend and frontend ports respectively. Existing
+QA workspaces may already occupy 57432; stop the intended service explicitly
+before starting another, without changing or reusing its data directory.
 Do not use QA scripts against a personal workspace. Vite preserves exact-origin
 and loopback restrictions and forwards the backend HttpOnly cookie; bearer
 tokens are not embedded in the frontend. Visit the backend URL first to obtain
