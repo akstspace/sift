@@ -315,9 +315,6 @@ func (s *Store) SaveTask(t Task, expected int, actor, reason, requestID string) 
 		if old.MergedInto != "" {
 			return t, conflict("Task has been merged; use its survivor or undo the merge")
 		}
-		if old.Status != "done" && t.Status == "done" && trim(reason) == "" {
-			return t, invalid("Provide a Done reason before completing a task")
-		}
 		if actor != "user" && (old.Status != t.Status && (t.Status == "done" || old.Status == "done") || old.Actor == "user") && trim(reason) == "" {
 			return t, invalid("An agent must provide a reason for completing/reopening or revising a manual decision")
 		}
@@ -327,8 +324,8 @@ func (s *Store) SaveTask(t Task, expected int, actor, reason, requestID string) 
 		if expected != 0 {
 			return t, conflict("Task does not exist")
 		}
-		if t.Status == "done" && trim(reason) == "" {
-			return t, invalid("Provide a Done reason before completing a task")
+		if actor != "user" && t.Status == "done" && trim(reason) == "" {
+			return t, invalid("An agent must explain completion")
 		}
 		t.ID = newID("tsk_")
 		t.CreatedAt = now()

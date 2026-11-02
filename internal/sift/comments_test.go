@@ -118,15 +118,27 @@ func TestCommentsAPIAndCompletionReasons(t *testing.T) {
 		t.Fatal("comment missing in history")
 	}
 	task.Status = "done"
-	for _, actor := range []string{"user", "agent"} {
-		if _, err := s.Store.SaveTask(task, task.Revision, actor, " \n", ""); err == nil {
-			t.Fatal("completion without reason")
-		}
-		if _, err := s.Store.SaveTask(Task{Title: "Already finished", Status: "done"}, 0, actor, "", ""); err == nil {
-			t.Fatal("created done without reason")
-		}
+	// A person may complete work without explaining it; an agent may not.
+	if _, err := s.Store.SaveTask(task, task.Revision, "agent", " \n", ""); err == nil {
+		t.Fatal("agent completed without a reason")
 	}
-	task, err := s.Store.SaveTask(task, task.Revision, "user", "Verified the requested change", "")
+	quick, err := s.Store.SaveTask(task, task.Revision, "user", " \n", "")
+	if err != nil || quick.Status != "done" {
+		t.Fatal("a Done reason must be optional for people", err)
+	}
+	if _, err = s.Store.SaveTask(Task{Title: "Already finished", Status: "done"}, 0, "user", "", ""); err != nil {
+		t.Fatal("a task created in Done must not need a reason", err)
+	}
+	if _, err = s.Store.SaveTask(Task{Title: "Agent says finished", Status: "done"}, 0, "agent", "", ""); err == nil {
+		t.Fatal("an agent created a Done task without explaining it")
+	}
+	quick.Status = "open"
+	if quick, err = s.Store.SaveTask(quick, quick.Revision, "user", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	task = quick
+	task.Status = "done"
+	task, err = s.Store.SaveTask(task, task.Revision, "user", "Verified the requested change", "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -473,7 +473,7 @@ func (s *Service) Schema() map[string]any {
 			"cancellation": "Ctrl+C stops following, not the run; cancel separately with runs cancel ID",
 			"failure":      "unsuccessful terminal states output final run JSON and exit nonzero; transport/stream failures are never automatically retried",
 		},
-		"rules":   []string{"Use expected revisions on update", "Read task activity and comments before acting; comments are context, not permission for unrelated actions", "Every completion requires a Done reason; agent reopening/manual override also requires a reason", "Only UI user can manage columns", "One subtask level; active children block completion", "Catalog icons only; choose icons for the task topic, brand icons only for work about that service", "Potential duplicates never authorize an automatic merge"},
+		"rules":   []string{"Use expected revisions on update", "Read task activity and comments before acting; comments are context, not permission for unrelated actions", "Agents give a reason when completing or reopening a task or revising a manual decision; for people a Done reason is optional", "Only UI user can manage columns", "One subtask level; active children block completion", "Catalog icons only; choose icons for the task topic, brand icons only for work about that service", "Potential duplicates never authorize an automatic merge"},
 		"columns": s.Store.ListRaw("column"), "priorities": []string{"none", "low", "medium", "high", "urgent"},
 	}
 }

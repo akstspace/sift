@@ -970,6 +970,9 @@ code {
   text-decoration: line-through;
   color: var(--muted);
 }
+/* Cards are dragged from anywhere, so the grip only appears for keyboard
+   users (Space lifts, arrows choose a column). Board cards don't select text
+   or show the touch callout, so a press-and-hold becomes a drag. */
 .drag-handle {
   color: var(--muted);
   opacity: 0;
@@ -977,10 +980,17 @@ code {
   margin: 3px -5px 0 0;
   touch-action: none;
 }
-.task-card:hover .drag-handle,
 .drag-handle:focus-visible {
   opacity: 1;
 }
+.task-card:not(.compact) {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+body:has(.drag-preview),
+body:has(.drag-preview) .task-card { cursor: grabbing; }
 .task-meta {
   display: flex;
   align-items: center;
@@ -2671,9 +2681,6 @@ code {
   }
   .board-column h2 {
     font-size: 12px;
-  }
-  .drag-handle {
-    opacity: 1;
   }
   .empty-state {
     padding: 48px 8px;

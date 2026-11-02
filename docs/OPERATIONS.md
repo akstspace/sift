@@ -119,13 +119,14 @@ scheduled-job guidance, and shipped skill document this workflow. Comments are
 context, not permission for unrelated actions; agent attribution cannot claim
 to be `user`.
 
-Marking a task Done asks for a nonblank **Done reason** before saving. This applies
-to board completion buttons, subtasks, list status menus, drag-and-drop into Done,
-task-detail status changes, and tasks created directly in Done. Cancelling leaves
-the task unchanged; failed saves retain the reason for correction or retry.
-The reason is recorded with the completion in history, and existing task Undo
-still applies. Editing an already completed task does not require another reason.
-CLI/API completion also requires a reason (`--reason "What was addressed"`).
+Marking a task Done offers an optional **Done reason**: leave it blank to just
+complete the task. This applies to board completion buttons, subtasks, list
+status menus, drag-and-drop into Done, task-detail status changes, and tasks
+created directly in Done. Cancelling leaves the task unchanged; failed saves
+retain the reason for correction or retry. A reason is recorded with the
+completion in history, and existing task Undo still applies. Agents must still
+give a reason (`--reason "What was addressed"`) when they complete or reopen a
+task or revise a person's decision.
 
 Run history keeps the run header and controls visible while the transcript
 scrolls independently. Focus the transcript and use Page Up/Down or the arrow

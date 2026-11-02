@@ -47,6 +47,15 @@ describe("task sheet read, draft, and save contracts", () => {
     await waitFor(() => expect(props.onClose).toHaveBeenCalledOnce());
     expect(props.onSave).toHaveBeenLastCalledWith(expect.objectContaining({ status: "done" }), "Checked the delivered work");
   });
+  it("saves a completion with a blank optional reason once, without asking again", async () => {
+    const { props, user } = mount();
+    await user.click(screen.getByRole("combobox", { name: "Status" })); await user.click(screen.getByRole("option", { name: "Done" }));
+    await user.click(save());
+    await user.click(within(screen.getByRole("dialog", { name: "Mark task Done" })).getByRole("button", { name: "Mark Done" }));
+    await waitFor(() => expect(props.onClose).toHaveBeenCalledOnce());
+    expect(props.onSave).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ status: "done" }), "");
+    expect(screen.queryByRole("dialog", { name: "Mark task Done" })).toBeNull();
+  });
   it("asks for a reason when creating directly in Done but not editing an already completed task", async () => {
     const fresh = newTask(); fresh.status = "done";
     const view = mount(fresh); await view.user.type(screen.getByRole("textbox", { name: "Task title" }), "Already completed");

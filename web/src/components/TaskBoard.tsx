@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef, useState } from "react";
+import { memo, useMemo, useRef, useState, type KeyboardEventHandler } from "react";
 import { createPortal } from "react-dom";
 import { Choice } from "./Choice";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -6,7 +6,8 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useDraggable,
   useDroppable,
   useSensor,
@@ -89,6 +90,11 @@ function TaskCard({
   const arrival = cardMotion(!!reduced);
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } =
     useDraggable({ id: preview ? `preview-${task.id}` : task.id, data: { task, expanded }, disabled: compact || preview });
+  // A card is picked up from anywhere on it: by mouse once it moves a few
+  // pixels (a click still opens it), by touch after a short press (a swipe
+  // still scrolls the column). The grip stays as the keyboard way to lift it,
+  // so Enter on the title still opens the task instead of starting a drag.
+  const { onKeyDown: liftWithKeyboard, ...pickUp } = listeners ?? {};
   const complete = childrenTasks.filter((c) => c.status === "done").length;
   const project = props.projects.find((p) => p.id === task.project);
   const nested = expanded && childrenTasks.length > 0 && (
@@ -131,6 +137,7 @@ function TaskCard({
       exit={arrival.exit}
       transition={{ duration: reduced ? 0.1 : 0.26, ease: settle }}
       className={`task-card ${preview ? "drag-preview" : ""} ${compact ? "compact" : ""} ${task.status === "done" ? "completed" : ""} ${props.selected === task.id ? "selected" : ""}`}
+      {...pickUp}
     >
       <div className="task-card-main">
         <Action
@@ -165,7 +172,7 @@ function TaskCard({
             className="drag-handle"
             ref={setActivatorNodeRef}
             aria-label={"Drag " + task.title}
-            {...listeners}
+            onKeyDown={liftWithKeyboard as KeyboardEventHandler<HTMLButtonElement> | undefined}
             {...attributes}
           >
             <GripVertical size={14} />
@@ -302,7 +309,8 @@ export function TaskBoard(props: Props) {
   const { tasks, allTasks, view, columns } = props;
   const [dragging, setDragging] = useState<{ task: Task; expanded: boolean } | null>(null);
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: columnCoordinates }),
   );
   const childrenByParent = useMemo(() => {

@@ -301,6 +301,16 @@ describe("workspace integration", () => {
     expect(screen.queryByRole("dialog", { name: "Mark task Done" })).toBeNull();
     expect(mock.mock.calls.some(([, method]) => method === "PUT")).toBe(false);
   });
+  it("completes a task in one step when the optional Done reason is left blank", async () => {
+    const task = taskFixture({ today: true }), success = vi.spyOn(toast, "success");
+    const { user } = await mount(snapshotFixture({ tasks: [task] }));
+    await user.click(screen.getByRole("button", { name: "Complete " + task.title }));
+    await user.click(screen.getByRole("button", { name: "Mark Done" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(current.tasks[0].status).toBe("done");
+    expect(mock).toHaveBeenCalledWith("/tasks/" + task.id, "PUT", expect.objectContaining({ reason: "" }));
+    await waitFor(() => expect(success).toHaveBeenCalledWith("Task completed", expect.anything()));
+  });
   it("asks for reasons on subtask toggles and list status changes", async () => {
     vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function(this: HTMLElement) { return this.classList.contains("task-list") ? 600 : 0; });
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function(this: HTMLElement) { return this.classList.contains("task-list") ? 900 : 0; });

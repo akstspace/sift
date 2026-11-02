@@ -26,10 +26,10 @@ describe("whole-card tasks with independent actions", () => {
       return { x, y, top: y, left: x, width: 300, height, right: x + 300, bottom: y + height, toJSON() {} };
     });
     const task = taskFixture(); const { props, user } = mount([task]);
-    const handle = screen.getByRole("button", { name: "Drag " + task.title });
-    await user.pointer([{ target: handle, coords: { x: 100, y: 80 }, keys: "[MouseLeft>]" }, { coords: { x: 120, y: 80 } }, { target: document.body, coords: { x: 1800, y: 900 } }, { keys: "[/MouseLeft]" }]);
+    const title = screen.getByRole("button", { name: task.title });
+    await user.pointer([{ target: title, coords: { x: 100, y: 80 }, keys: "[MouseLeft>]" }, { coords: { x: 120, y: 80 } }, { target: document.body, coords: { x: 1800, y: 900 } }, { keys: "[/MouseLeft]" }]);
     expect(document.querySelector(".drag-preview")).toBeNull(); expect(props.onChange).not.toHaveBeenCalled(); expect(props.onOpen).not.toHaveBeenCalled();
-    // PointerSensor retains its click-suppression listener briefly after detach.
+    // The mouse sensor retains its click-suppression listener briefly after detach.
     // Wait for actual teardown instead of letting it swallow the next test click.
     await waitFor(() => expect(removeListener).toHaveBeenCalledWith("click", expect.any(Function), { capture: true }));
   });
@@ -76,6 +76,14 @@ describe("whole-card tasks with independent actions", () => {
     const { user } = mount(tasks); expect(document.querySelectorAll(".task-card")).toHaveLength(70);
     await user.click(screen.getByRole("button", { name: "Show more (80)" })); expect(document.querySelectorAll(".task-card")).toHaveLength(140);
     await user.click(screen.getByRole("button", { name: "Show more (10)" })); expect(document.querySelectorAll(".task-card")).toHaveLength(150);
+  });
+  it("keeps Enter on a card's title for opening it, never for lifting it", async () => {
+    const task = taskFixture(); const { props, user } = mount([task]);
+    screen.getByRole("button", { name: task.title }).focus();
+    await user.keyboard("{Enter}");
+    expect(props.onOpen).toHaveBeenCalledWith(task); expect(document.querySelector(".drag-preview")).toBeNull();
+    const card = screen.getByRole("button", { name: task.title }).closest("article")!;
+    expect(card.getAttribute("role")).toBeNull(); expect(card.getAttribute("tabindex")).toBeNull();
   });
   it("provides a keyboard lift/cancel handle without opening or changing the task", async () => {
     const task = taskFixture(); const { props, user } = mount([task]);
@@ -142,8 +150,9 @@ describe("whole-card tasks with independent actions", () => {
     const { props, user } = mount([task, child]);
     await user.click(screen.getByRole("button", { name: "Hide subtasks for " + task.title }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Child" })).toBeNull());
-    const handle = screen.getByRole("button", { name: "Drag " + task.title }), source = handle.closest("article")!;
-    await user.pointer([{ target: handle, coords: { x: 100, y: 80 }, keys: "[MouseLeft>]" }, { coords: { x: 120, y: 80 } }, { coords: { x: 420, y: 80 } }]);
+    // Picked up from the card body (its title), not a dedicated grip.
+    const title = screen.getByRole("button", { name: task.title }), source = title.closest("article")!;
+    await user.pointer([{ target: title, coords: { x: 100, y: 80 }, keys: "[MouseLeft>]" }, { coords: { x: 120, y: 80 } }, { coords: { x: 420, y: 80 } }]);
     const preview = document.querySelector(".drag-preview")!;
     expect(["", "none"]).toContain(source.style.transform);
     expect(preview.querySelector(".task-name")?.textContent).toBe(task.title);

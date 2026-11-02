@@ -1,19 +1,21 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { deferred, TestProviders } from "../test/fixtures";
 import { DoneReasonDialog } from "./DoneReasonDialog";
 
 describe("Done reason confirmation", () => {
-  it("requires nonblank text and allows cancellation without completing", async () => {
-    const onConfirm = vi.fn(), onCancel = vi.fn(), user = userEvent.setup();
+  it("lets the reason be left blank and allows cancellation without completing", async () => {
+    const onConfirm = vi.fn().mockResolvedValue(undefined), onCancel = vi.fn(), user = userEvent.setup();
     render(<DoneReasonDialog title="Finish research" onConfirm={onConfirm} onCancel={onCancel} />, { wrapper: TestProviders });
     const input = screen.getByRole("textbox", { name: "Done reason" });
     expect(document.activeElement).toBe(input);
-    expect((screen.getByRole("button", { name: "Mark Done" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.submit(input.closest("form")!);
+    expect(input.hasAttribute("required")).toBe(false);
+    expect(screen.getByText("Optional. Leave blank to just mark it Done.")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Mark Done" }));
+    expect(onConfirm).toHaveBeenLastCalledWith("");
     await user.type(input, "   "); fireEvent.keyDown(input, { key: "Enter", ctrlKey: true });
-    expect(onConfirm).not.toHaveBeenCalled();
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(2)); expect(onConfirm).toHaveBeenLastCalledWith("");
     await user.click(screen.getByRole("button", { name: "Cancel" })); expect(onCancel).toHaveBeenCalledOnce();
     await user.keyboard("{Escape}"); expect(onCancel).toHaveBeenCalledTimes(2);
   });

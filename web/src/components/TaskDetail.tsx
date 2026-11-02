@@ -170,18 +170,19 @@ export function TaskDetail({
     if (busy) return;
     if (comment.trim()) { setCommentError("Post or clear your comment before saving task changes."); return; }
     if (newTag.trim()) { setError("Add or clear the new tag before saving task changes."); return; }
-    if (task.status === "done" && JSON.parse(baseline.current).status !== "done" && !reason) { setCompleting(true); return; }
-    if (task.status === "done" && !task.id && !reason) { setCompleting(true); return; }
+    // undefined: not asked yet. "" or text: the person confirmed in the Done dialog.
+    if (task.status === "done" && JSON.parse(baseline.current).status !== "done" && reason === undefined) { setCompleting(true); return; }
+    if (task.status === "done" && !task.id && reason === undefined) { setCompleting(true); return; }
     setBusy(true);
     setError("");
     try {
       const pendingCheck = newCheck.trim() ? [{ id: crypto.randomUUID(), title: newCheck.trim(), done: false }] : [];
       const value = { ...task, checklist: [...task.checklist, ...pendingCheck] };
-      const saved = reason ? await onSave(value, reason) : await onSave(value);
+      const saved = reason !== undefined ? await onSave(value, reason) : await onSave(value);
       setTask(saved);
       onClose();
     } catch (e) {
-      if (reason) throw e;
+      if (reason !== undefined) throw e;
       setError((e as Error).message);
     } finally {
       setBusy(false);
