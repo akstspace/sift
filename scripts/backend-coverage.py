@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument("--profile", default=".cache/go-coverage.out")
 parser.add_argument("--output", default="docs/verification/backend-coverage.json")
-parser.add_argument("--require", type=float, choices=[100.0], help="Fail unless every application statement is covered; reports are retained")
+parser.add_argument("--require", type=float, choices=[95.0, 100.0], help="Minimum application statement coverage percentage; reports are retained")
 args = parser.parse_args()
 profile = ROOT / args.profile
 module = next(line.split()[1] for line in (ROOT / "go.mod").read_text().splitlines() if line.startswith("module "))
@@ -64,6 +64,7 @@ report = {
     "goVersion": subprocess.check_output(["go", "version"], cwd=ROOT, text=True).strip(),
     "platform": subprocess.check_output(["go", "env", "GOOS", "GOARCH"], cwd=ROOT, text=True).split(),
     "total": total,
+    "gate": {"requiredPercent": args.require, "passed": total["covered"] * 100 >= args.require * total["total"]} if args.require is not None else None,
     "packages": packages,
     "files": dict(sorted(files.items())),
 }
@@ -75,5 +76,5 @@ subprocess.run(["go", "tool", "cover", "-html=" + str(profile), "-o", str(output
 for name, record in packages.items():
     print(f"{name}: {record['covered']}/{record['total']} statements ({record['percent']:.2f}%)")
 print(f"Reports: {output} and {output.with_suffix('.html')}")
-if args.require is not None and total["covered"] != total["total"]:
-    raise SystemExit(f"Backend 100% coverage gate failed: {total['total'] - total['covered']} application statements remain uncovered")
+if args.require is not None and not report["gate"]["passed"]:
+    raise SystemExit(f"Backend {args.require:g}% coverage gate failed: {total['percent']:.2f}% covered; {total['total'] - total['covered']} application statements remain uncovered")

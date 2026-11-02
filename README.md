@@ -36,8 +36,13 @@ Defaults: executable link `~/.local/bin/sift`, versioned packages
 those **installation** paths; the latter is not your task workspace directory.
 Existing version directories, regular files, and unrelated links are not overwritten.
 Older version files are retained for manual recovery. No service is started, no
-login item/app/Dock shortcut/skill is installed, and no Pi configuration or shell
-profile is changed. Add the bin directory to PATH yourself if needed.
+login item/app/Dock shortcut/skill is installed, and no Pi configuration is changed.
+The installer adds the bin directory to your shell configuration for new terminals
+(zsh, bash, fish, or POSIX sh). Existing content is preserved and repeated installs
+do not add duplicate entries. Open a new terminal afterward, or use the command
+printed by the installer in your current shell. Pass `--no-modify-path` to leave
+shell configuration untouched. Unsupported or unsafe profile files produce a
+warning without undoing a successful installation.
 
 Checksums protect integrity relative to the release account, not against compromise
 of that account. The raw installer URL and remote installation require the owner
@@ -142,7 +147,7 @@ Supported package targets are macOS arm64 and Linux arm64/amd64. Cross-building
 is not proof of runtime acceptance on a platform. A public source repository and
 source tag do not imply that local binary artifacts passed every release gate.
 
-GitHub checks include strict frontend and backend 100% coverage gates, the complete Go race/integration
+GitHub checks include 95% frontend and backend statement coverage gates, the complete Go race/integration
 suite, native package smoke checks, checksum-pinned OpenGrep and Trivy, and workflow
 linting. See [CI, security, and release operation](docs/BUILDING.md#github-ci-and-release).
 Only an explicitly dispatched release workflow bumps the version and publishes

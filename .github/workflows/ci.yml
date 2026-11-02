@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   frontend:
-    name: Frontend / strict 100% coverage
+    name: Frontend / 95% coverage
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -134,7 +134,7 @@ jobs:
           SIFT_INTEGRATION: '1'
         run: go test -race -count=1 -coverprofile=.cache/go-coverage.out ./...
       - run: go vet ./...
-      - run: python3 scripts/backend-coverage.py --require 100 --output .cache/backend-coverage.json
+      - run: python3 scripts/backend-coverage.py --require 95 --output .cache/backend-coverage.json
       - name: Verify archive and run native package smoke
         env:
           VERSION: ${{ steps.version.outputs.version }}

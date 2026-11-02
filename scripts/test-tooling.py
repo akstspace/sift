@@ -2,7 +2,7 @@
 """Hermetic installer/version tests: no network, real install, service, or prompts."""
 import hashlib
 import ast
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, redirect_stderr
 import io
 import json
 import os
@@ -174,7 +174,7 @@ class LocalReleaseNoticeTests(unittest.TestCase):
 
 
 class BackendCoverageGateTests(unittest.TestCase):
-    def run_gate(self, counts, require=True):
+    def run_gate(self, counts, require=100):
         with tempfile.TemporaryDirectory(prefix="sift-coverage-gate-") as temporary:
             root = Path(temporary)
             (root / "scripts").mkdir()
@@ -187,9 +187,10 @@ class BackendCoverageGateTests(unittest.TestCase):
                 source = root / name
                 source.parent.mkdir(parents=True, exist_ok=True)
                 source.write_text("package fixture\nfunc run() {}\n")
-                profile.append(f"example/sift/{name}:2.1,2.14 1 {count}")
+                statements, executions = count if isinstance(count, tuple) else (1, count)
+                profile.append(f"example/sift/{name}:2.1,2.14 {statements} {executions}")
             (root / ".cache/go-coverage.out").write_text("\n".join(profile) + "\n")
-            args = [str(script)] + (["--require", "100"] if require else [])
+            args = [str(script)] + (["--require", str(require)] if require is not None else [])
             error = None
             with patch("sys.argv", args), patch.object(subprocess, "check_output", side_effect=["go version fixture", "darwin\narm64\n"]), patch.object(subprocess, "run") as cover, redirect_stdout(io.StringIO()):
                 try:
@@ -216,9 +217,27 @@ class BackendCoverageGateTests(unittest.TestCase):
         self.assertEqual(len(report["files"]["internal/sift/service.go"]["uncovered"]), 1)
 
     def test_report_only_mode_does_not_claim_strict_gate_passed(self):
-        report, error = self.run_gate({"internal/sift/service.go": 0}, require=False)
+        report, error = self.run_gate({"internal/sift/service.go": 0}, require=None)
         self.assertIsNone(error)
         self.assertEqual(report["total"]["percent"], 0)
+        self.assertIsNone(report["gate"])
+
+    def test_95_percent_gate_passes_at_and_above_exact_boundary(self):
+        for covered in [19, 20]:
+            with self.subTest(covered=covered):
+                report, error = self.run_gate({"cmd/sift/main.go": (covered, 1), "internal/sift/service.go": (1, 0)}, require=95)
+                self.assertIsNone(error)
+                self.assertEqual(report["gate"], {"requiredPercent": 95, "passed": True})
+                self.assertEqual(report["total"]["covered"], covered)
+                self.assertEqual(len(report["files"]["internal/sift/service.go"]["uncovered"]), 1)
+
+    def test_95_percent_gate_fails_without_rounding_or_excluding_uncovered_statements(self):
+        report, error = self.run_gate({"cmd/sift/main.go": (18999, 1), "internal/sift/service.go": (1000, 0)}, require=95)
+        self.assertIn("Backend 95% coverage gate failed", error)
+        self.assertEqual(f"{report['total']['percent']:.2f}", "95.00")
+        self.assertLess(report["total"]["percent"], 95)
+        self.assertEqual(report["gate"], {"requiredPercent": 95, "passed": False})
+        self.assertEqual(report["files"]["internal/sift/service.go"]["uncovered"][0]["statements"], 1000)
 
     def test_empty_profile_cannot_pass_strict_gate(self):
         with tempfile.TemporaryDirectory(prefix="sift-empty-coverage-") as temporary:
@@ -417,6 +436,8 @@ class InstallerTests(unittest.TestCase):
         patch.object(NS["platform"], "system", return_value="Darwin").start()
         patch.object(NS["platform"], "machine", return_value="arm64").start()
         patch.dict(NS, {"fetch": self.fetch}).start()
+        # Existing archive/install tests opt out; PATH behavior is exercised in
+        # disposable HOME directories below, never the developer's shell profile.
         output = redirect_stdout(io.StringIO())
         output.__enter__()
         self.addCleanup(output.__exit__, None, None, None)
@@ -431,7 +452,7 @@ class InstallerTests(unittest.TestCase):
         return self.blob
 
     def install(self, version="0.1.0", replace=False):
-        return NS["install"](version, self.bin, self.data, replace)
+        return NS["install"](version, self.bin, self.data, replace, modify_path=False)
 
     def test_install_and_notices_no_execution(self):
         destination = self.install()
@@ -499,7 +520,7 @@ class InstallerTests(unittest.TestCase):
             with self.subTest(machine=machine), tempfile.TemporaryDirectory() as temporary:
                 with patch.object(NS["platform"], "system", return_value="Linux"), patch.object(NS["platform"], "machine", return_value=machine):
                     self.checksum = f"{hashlib.sha256(self.blob).hexdigest()}  sift_linux_{target}.tar.gz\n"
-                    NS["install"]("0.1.0", Path(temporary) / "bin", Path(temporary) / "data")
+                    NS["install"]("0.1.0", Path(temporary) / "bin", Path(temporary) / "data", modify_path=False)
                     self.assertTrue(self.requests[-1].endswith(f"sift_linux_{target}.tar.gz"))
 
     def test_prerelease_draft_and_invalid_latest(self):
@@ -549,6 +570,168 @@ class InstallerTests(unittest.TestCase):
         result = subprocess.run(["sh", str(ROOT / "scripts/install.sh"), "--help"], capture_output=True, text=True, check=True)
         self.assertIn("akstspace/sift", result.stdout)
         self.assertIn("--replace", result.stdout)
+        self.assertIn("--no-modify-path", result.stdout)
+
+    def test_default_install_adds_path_only_after_success_and_supports_opt_out(self):
+        home = self.root / "home"
+        home.mkdir()
+        with patch.dict(os.environ, {"HOME": str(home), "SHELL": "/bin/zsh", "ZDOTDIR": str(home)}, clear=False):
+            self.checksum = "0" * 64 + "  sift_darwin_arm64.tar.gz"
+            with self.assertRaisesRegex(ValueError, "mismatch"):
+                NS["install"]("0.1.0", self.bin, self.data)
+            self.assertEqual(list(home.iterdir()), [])
+            self.checksum = None
+            NS["install"]("0.1.0", self.bin, self.data, modify_path=False)
+            self.assertEqual(list(home.iterdir()), [])
+            NS["install"]("0.1.1", self.bin, self.data, replace=True)
+            profile = home / ".zshrc"
+            self.assertIn(str(self.bin), profile.read_text())
+            before = profile.read_bytes()
+            NS["install"]("0.1.2", self.bin, self.data, replace=True)
+            self.assertEqual(profile.read_bytes(), before)
+
+    def test_path_setup_failure_keeps_successful_install_and_warns(self):
+        with patch.dict(NS, {"configure_path": Mock(side_effect=OSError("fixture profile refusal"))}), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as errors:
+            destination = NS["install"]("0.1.0", self.bin, self.data)
+        self.assertTrue((destination / "sift").is_file())
+        self.assertTrue((self.bin / "sift").is_symlink())
+        self.assertIn("installed", errors.getvalue())
+        self.assertIn("fixture profile refusal", errors.getvalue())
+
+
+class InstallerPathTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="sift-path-test-")
+        self.addCleanup(self.tmp.cleanup)
+        self.home = Path(self.tmp.name)
+        self.bin = self.home / "bin with spaces"
+        self.addCleanup(patch.stopall)
+        patch.dict(os.environ, {"HOME": str(self.home), "SHELL": "/bin/zsh"}, clear=True).start()
+
+    def test_shell_profiles_and_overrides(self):
+        cases = [("zsh", [self.home / ".zshrc"]), ("bash", [self.home / ".bashrc", self.home / ".profile"]),
+                 ("sh", [self.home / ".profile"]), ("dash", [self.home / ".profile"]),
+                 ("ksh", [self.home / ".profile"]), ("fish", [self.home / ".config/fish/conf.d/sift-path.fish"])]
+        for shell, expected in cases:
+            with self.subTest(shell=shell), patch.dict(os.environ, {"SHELL": "/bin/" + shell}):
+                self.assertEqual(NS["path_configuration"](self.bin)[0], expected)
+        with patch.dict(os.environ, {"ZDOTDIR": str(self.home / "zsh-config")}):
+            self.assertEqual(NS["path_configuration"](self.bin)[0], [self.home / "zsh-config/.zshrc"])
+        with patch.dict(os.environ, {"SHELL": "/bin/fish", "XDG_CONFIG_HOME": str(self.home / "fish-config")}):
+            profiles, block, command = NS["path_configuration"](self.bin)
+            self.assertEqual(profiles, [self.home / "fish-config/fish/conf.d/sift-path.fish"])
+            self.assertIn("set -gx PATH $PATH", command)
+            self.assertIn("if not contains --", block)
+        for name in [".bash_login", ".bash_profile"]:
+            (self.home / name).write_text("# existing login profile\n")
+            with patch.dict(os.environ, {"SHELL": "/bin/bash"}):
+                self.assertEqual(NS["path_configuration"](self.bin)[0][-1], self.home / name)
+
+    def test_path_block_preserves_content_permissions_and_is_idempotent(self):
+        profile = self.home / ".zshrc"
+        original = b"# existing configuration without newline"
+        profile.write_bytes(original)
+        profile.chmod(0o640)
+        block = NS["path_configuration"](self.bin)[1]
+        self.assertTrue(NS["append_path_configuration"](profile, block))
+        before = profile.read_bytes()
+        self.assertTrue(before.startswith(original + b"\n\n"))
+        self.assertEqual(profile.stat().st_mode & 0o777, 0o640)
+        self.assertFalse(NS["append_path_configuration"](profile, block))
+        self.assertEqual(profile.read_bytes(), before)
+        profile.write_text(block.replace("export PATH", "# manually changed export PATH"))
+        changed = profile.read_bytes()
+        with self.assertRaisesRegex(ValueError, "edited"):
+            NS["append_path_configuration"](profile, block)
+        self.assertEqual(profile.read_bytes(), changed)
+
+    def test_new_profile_has_private_permissions_and_fish_uses_managed_file(self):
+        with patch.dict(os.environ, {"SHELL": "/bin/fish"}), redirect_stdout(io.StringIO()):
+            NS["configure_path"](self.bin)
+            NS["configure_path"](self.bin)
+        profile = self.home / ".config/fish/conf.d/sift-path.fish"
+        self.assertEqual(profile.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(profile.read_text().count("# >>> Sift PATH"), 1)
+        self.assertFalse((self.home / ".config/fish/config.fish").exists())
+
+    def test_refuses_unsafe_profiles_without_touching_targets(self):
+        target = self.home / "target"
+        target.write_bytes(b"keep exact bytes")
+        symlink = self.home / "symlink"
+        symlink.symlink_to(target)
+        block = NS["path_configuration"](self.bin)[1]
+        with self.assertRaises(OSError):NS["append_path_configuration"](symlink, block)
+        self.assertEqual(target.read_bytes(), b"keep exact bytes")
+        target.chmod(0o666)
+        with self.assertRaisesRegex(ValueError, "unsafe"):NS["append_path_configuration"](target, block)
+        self.assertEqual(target.read_bytes(), b"keep exact bytes")
+        target.chmod(0o600)
+        target.write_bytes(b"x" * ((1 << 20) + 1))
+        with self.assertRaisesRegex(ValueError, "oversized"):NS["append_path_configuration"](target, block)
+        directory = self.home / "directory"
+        directory.mkdir()
+        with self.assertRaises(OSError):NS["append_path_configuration"](directory, block)
+        fifo = self.home / "fifo"
+        os.mkfifo(fifo)
+        with self.assertRaisesRegex(ValueError, "unsafe"):NS["append_path_configuration"](fifo, block)
+
+    def test_posix_block_quotes_shell_metacharacters_and_does_not_duplicate_path(self):
+        shells = ["/bin/sh", "/bin/bash"] + (["/bin/zsh"] if Path("/bin/zsh").is_file() else [])
+        for name in ["bin with spaces", "bin'quote", "$(touch INJECTED);`touch INJECTED`$HOME*\\bin"]:
+            directory = self.home / name
+            block = NS["path_configuration"](directory)[1]
+            for shell in shells:
+                for path in ["/usr/bin:/bin", "", str(directory), "/usr/bin:" + str(directory) + ":/bin"]:
+                    with self.subTest(name=name, shell=shell, path=path):
+                        command = block + "\n" + block + '\nprintf "%s" "$PATH"'
+                        result = subprocess.run([shell, "-c", command], env={"PATH": path, "HOME": str(self.home)}, cwd=self.home,
+                                                capture_output=True, text=True, check=True)
+                        self.assertEqual(result.stdout.split(":"), (path.split(":") if path else []) + ([] if str(directory) in path.split(":") else [str(directory)]))
+            self.assertFalse((self.home / "INJECTED").exists())
+
+    def test_invalid_paths_unsupported_shells_and_relative_configuration_are_refused(self):
+        for name in ["bin:other", "bin\nother", "bin\rother", "bin\x00other"]:
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "PATH separators"):
+                NS["path_configuration"](self.home / name)
+        with patch.dict(os.environ, {"SHELL": "/bin/tcsh"}), self.assertRaisesRegex(ValueError, "not supported"):
+            NS["path_configuration"](self.bin)
+        for shell, key in [("zsh", "ZDOTDIR"), ("fish", "XDG_CONFIG_HOME")]:
+            with patch.dict(os.environ, {"SHELL": "/bin/" + shell, key: "relative"}), self.assertRaisesRegex(ValueError, "absolute"):
+                NS["path_configuration"](self.bin)
+
+    def test_configuration_failure_warns_and_retains_other_bash_profile(self):
+        (self.home / ".bashrc").symlink_to(self.home / "missing")
+        with patch.dict(os.environ, {"SHELL": "/bin/bash"}), redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()) as errors:
+            NS["configure_path"](self.bin)
+        self.assertIn("skipped", errors.getvalue())
+        self.assertIn("current shell", output.getvalue())
+        self.assertTrue((self.home / ".profile").is_file())
+        self.assertTrue((self.home / ".bashrc").is_symlink())
+
+    def test_new_interactive_terminals_find_installed_command(self):
+        self.bin.mkdir()
+        executable = self.bin / "sift"
+        executable.write_text("#!/bin/sh\nprintf 'SIFT_PATH_OK'\n")
+        executable.chmod(0o700)
+        for shell, arguments in [("bash", ["--noprofile", "--rcfile", str(self.home / ".bashrc"), "-i"]),
+                                 ("zsh", ["-d", "-i"])]:
+            path = Path("/bin") / shell
+            if not path.is_file():continue
+            with self.subTest(shell=shell), patch.dict(os.environ, {"SHELL": str(path)}), redirect_stdout(io.StringIO()):
+                NS["configure_path"](self.bin)
+                result = subprocess.run([str(path), *arguments, "-c", "sift"],
+                                        env={"HOME": str(self.home), "ZDOTDIR": str(self.home), "PATH": "/usr/bin:/bin", "TERM": "dumb"},
+                                        stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True)
+                self.assertEqual(result.stdout, "SIFT_PATH_OK")
+
+    def test_profile_locked_by_another_process_is_left_untouched(self):
+        profile = self.home / ".zshrc"
+        profile.write_text("# keep\n")
+        with profile.open("rb") as owner:
+            NS["fcntl"].flock(owner.fileno(), NS["fcntl"].LOCK_EX | NS["fcntl"].LOCK_NB)
+            with self.assertRaises(OSError):
+                NS["append_path_configuration"](profile, NS["path_configuration"](self.bin)[1])
+        self.assertEqual(profile.read_text(), "# keep\n")
 
 
 class FetchTests(unittest.TestCase):
