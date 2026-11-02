@@ -1,0 +1,17 @@
+{
+  "version": "1.0.4",
+  "platforms": {
+    "darwin-arm64": {
+      "asset": "rustfs-macos-aarch64-v1.0.4.zip",
+      "sha256": "49057482769d7904ef95dc40457d71122f48cbb8e9e0725a0817a3ec6daf8270"
+    },
+    "linux-arm64": {
+      "asset": "rustfs-linux-aarch64-musl-v1.0.4.zip",
+      "sha256": "81414fd0e41969f4f5c2e0555951cee76d3f224c112c269c80f52b31276f187a"
+    },
+    "linux-amd64": {
+      "asset": "rustfs-linux-x86_64-musl-v1.0.4.zip",
+      "sha256": "4924ad4b699b9f59943051efedae2d1eb6d4cac503a1b0384c4b25f7c2c31b5c"
+    }
+  }
+}

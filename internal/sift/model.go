@@ -1,0 +1,161 @@
+package sift
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+)
+
+var Version = "0.1.0-dev"
+
+type ChecklistItem struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Done  bool   `json:"done"`
+}
+type Task struct {
+	ID           string          `json:"id"`
+	Title        string          `json:"title"`
+	Description  string          `json:"description"`
+	Status       string          `json:"status"`
+	Priority     string          `json:"priority"`
+	Project      string          `json:"project"`
+	Tags         []string        `json:"tags"`
+	Icon         string          `json:"icon"`
+	ParentID     string          `json:"parentId"`
+	Today        bool            `json:"today"`
+	DueDate      string          `json:"dueDate"`
+	SnoozedUntil string          `json:"snoozedUntil"`
+	Checklist    []ChecklistItem `json:"checklist"`
+	Attachments  []string        `json:"attachments"`
+	Source       string          `json:"source"`
+	SourceKey    string          `json:"sourceKey"`
+	MergedInto   string          `json:"mergedInto"`
+	DeletedAt    string          `json:"deletedAt"`
+	CreatedAt    string          `json:"createdAt"`
+	UpdatedAt    string          `json:"updatedAt"`
+	Actor        string          `json:"actor"`
+	Revision     int             `json:"revision"`
+}
+type Column struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Color string `json:"color"`
+	Order int    `json:"order"`
+}
+type Entity struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Color    string `json:"color"`
+	Archived bool   `json:"archived"`
+	Icon     string `json:"icon"`
+}
+type Job struct {
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Prompt         string `json:"prompt"`
+	Directory      string `json:"directory"`
+	Provider       string `json:"provider"`
+	Model          string `json:"model"`
+	Thinking       string `json:"thinking"`
+	ScheduleType   string `json:"scheduleType"`
+	Schedule       string `json:"schedule"`
+	Weekdays       []int  `json:"weekdays"`
+	Timezone       string `json:"timezone"`
+	Enabled        bool   `json:"enabled"`
+	TimeoutMinutes int    `json:"timeoutMinutes"`
+	SessionID      string `json:"sessionId"`
+	NextRun        string `json:"nextRun"`
+	LastRun        string `json:"lastRun"`
+	Pending        bool   `json:"pending"`
+	IncludeImages  bool   `json:"includeImages"`
+	Revision       int    `json:"revision"`
+}
+type Run struct {
+	ID        string `json:"id"`
+	JobID     string `json:"jobId"`
+	JobName   string `json:"jobName"`
+	Status    string `json:"status"`
+	StartedAt string `json:"startedAt"`
+	EndedAt   string `json:"endedAt"`
+	Summary   string `json:"summary"`
+	Error     string `json:"error"`
+	Model     string `json:"model"`
+	SessionID string `json:"sessionId"`
+	Job       Job    `json:"job"`
+}
+type RunEntry struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+	At   string `json:"at"`
+	Tool string `json:"tool,omitempty"`
+}
+type Attachment struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	MIME   string `json:"mime"`
+	Size   int64  `json:"size"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+	Hash   string `json:"hash"`
+}
+type Notification struct {
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Message string `json:"message"`
+	Read    bool   `json:"read"`
+	At      string `json:"at"`
+}
+type Settings struct {
+	ID                   string `json:"id"`
+	Onboarded            bool   `json:"onboarded"`
+	Timezone             string `json:"timezone"`
+	Theme                string `json:"theme"`
+	View                 string `json:"view"`
+	Concurrency          int    `json:"concurrency"`
+	TimeoutMinutes       int    `json:"timeoutMinutes"`
+	CheckUpdates         bool   `json:"checkUpdates"`
+	DesktopNotifications bool   `json:"desktopNotifications"`
+	BackupRetention      int    `json:"backupRetention"`
+	LogRetentionDays     int    `json:"logRetentionDays"`
+	TrashRetentionDays   int    `json:"trashRetentionDays"`
+	LastBackup           string `json:"lastBackup"`
+	BackupError          string `json:"backupError"`
+}
+type Event struct {
+	ID       int64           `json:"id"`
+	Kind     string          `json:"kind"`
+	EntityID string          `json:"entityId"`
+	Actor    string          `json:"actor"`
+	Reason   string          `json:"reason"`
+	At       string          `json:"at"`
+	Before   json.RawMessage `json:"before,omitempty"`
+	After    json.RawMessage `json:"after,omitempty"`
+	Group    string          `json:"group,omitempty"`
+}
+type Duplicate struct {
+	ID      string   `json:"id"`
+	Title   string   `json:"title"`
+	Status  string   `json:"status"`
+	Score   float64  `json:"score"`
+	Reasons []string `json:"reasons"`
+}
+type APIError struct {
+	Status  int
+	Message string
+}
+
+func (e *APIError) Error() string              { return e.Message }
+func invalid(format string, args ...any) error { return &APIError{400, fmt.Sprintf(format, args...)} }
+func conflict(s string) error                  { return &APIError{409, s} }
+func newID(prefix string) string {
+	b := make([]byte, 10)
+	_, _ = rand.Read(b)
+	return prefix + hex.EncodeToString(b)
+}
+func now() string          { return time.Now().UTC().Format(time.RFC3339Nano) }
+func encode(v any) []byte  { b, _ := json.Marshal(v); return b }
+func trim(s string) string { return strings.TrimSpace(s) }

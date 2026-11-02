@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      bump:
+        description: Optional release-only version bump, applied in each isolated checkout
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  frontend:
+    name: Frontend / strict 100% coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Validate version or apply release bump
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          if [ -n "$BUMP" ]; then python3 scripts/version.py --bump "$BUMP"; else python3 scripts/version.py; fi
+      - run: npm ci
+        working-directory: web
+      - run: npm run build
+        working-directory: web
+      - run: npm run test:coverage:check
+        working-directory: web
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: ${{ always() }}
+        with:
+          name: frontend-coverage
+          path: docs/verification/frontend-coverage
+          if-no-files-found: error
+
+  security:
+    name: Tooling / Trivy / OpenGrep / actionlint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Validate version or apply release bump
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          if [ -n "$BUMP" ]; then python3 scripts/version.py --bump "$BUMP"; else python3 scripts/version.py; fi
+      - run: python3 scripts/test-tooling.py
+      - run: python3 scripts/security-tools.py opengrep trivy actionlint rules
+      - run: .cache/security-tools/actionlint -color .github/workflows/*.yml
+      - run: python3 scripts/prepare-rustfs.py --platform all
+      - run: python3 scripts/security-check.py all
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: ${{ always() }}
+        with:
+          name: security-reports
+          path: .cache/security
+          include-hidden-files: true
+          if-no-files-found: error
+
+  packages:
+    name: Native / ${{ matrix.platform }}
+    needs: [frontend, security]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            platform: darwin-arm64
+          - runner: ubuntu-24.04
+            platform: linux-amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Resolve version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          if [ -n "$BUMP" ]; then python3 scripts/version.py --bump "$BUMP"; fi
+          echo "version=$(python3 scripts/version.py)" >> "$GITHUB_OUTPUT"
+      - run: python3 scripts/test-tooling.py
+      - name: Build native release and required notices
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PLATFORM: ${{ matrix.platform }}
+        run: python3 scripts/release.py --version "$VERSION" --platform "$PLATFORM"
+      - name: Complete race and integration suite
+        env:
+          SIFT_INTEGRATION: '1'
+        run: go test -race -count=1 -coverprofile=.cache/go-coverage.out ./...
+      - run: go vet ./...
+      - run: python3 scripts/backend-coverage.py --require 100 --output .cache/backend-coverage.json
+      - name: Verify archive and run native package smoke
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PLATFORM: ${{ matrix.platform }}
+        run: python3 scripts/release-check.py --version "$VERSION" --platform "$PLATFORM" --output .cache/release-smoke.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: package-${{ matrix.platform }}
+          path: dist/${{ steps.version.outputs.version }}/*.tar.gz
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: ${{ always() }}
+        with:
+          name: native-evidence-${{ matrix.platform }}
+          path: |
+            .cache/go-coverage.out
+            .cache/backend-coverage.*
+            .cache/release-smoke.json
+          include-hidden-files: true
+          if-no-files-found: error
