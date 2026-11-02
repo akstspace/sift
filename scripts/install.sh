@@ -14,19 +14,26 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import platform
+import plistlib
 import re
 import shlex
 import shutil
+import socket
 import stat
+import subprocess
 import sys
 import tarfile
 import tempfile
+import time
+import http.client
 import urllib.parse
 import urllib.request
 
 REPOSITORY = "akstspace/sift"
 MAX_ARCHIVE = 200 << 20
 MAX_EXPANDED = 500 << 20
+SERVICE_ADDRESS = "127.0.0.1:57431"
+SERVICE_LABEL = "space.akst.sift"
 
 
 def github_url(url, initial=False):
@@ -172,7 +179,161 @@ def configure_path(bin_dir):
     print(command)
 
 
-def install(version, bin_dir, data_dir, replace=False, modify_path=True):
+def workspace_directory(os_name, workspace=None):
+    if workspace is None:
+        workspace = os.environ.get("SIFT_DATA")
+    if not workspace:
+        base = (Path.home() / "Library/Application Support" if os_name == "darwin" else
+                Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config").expanduser())
+        if not base.is_absolute():
+            raise ValueError("The workspace configuration directory must be absolute")
+        workspace = base / "Sift"
+    return Path(workspace).expanduser().resolve()
+
+
+def startup_configuration(link, workspace, log, os_name):
+    home = Path.home()
+    # Login services do not inherit an interactive shell's PATH. Preserve the
+    # install-time executable search path for Pi, without copying credentials.
+    search = [str(link.parent), *os.environ.get("PATH", os.defpath).split(os.pathsep)]
+    environment = {"PATH": os.pathsep.join(dict.fromkeys(p for p in search if Path(p).is_absolute()))}
+    if os.environ.get("SIFT_PI"):
+        environment["SIFT_PI"] = os.environ["SIFT_PI"]
+    values = [str(home), str(link), str(workspace), str(log), *environment.values()]
+    if any(any(c in value for c in "\r\n\x00") for value in values):
+        raise ValueError("Service paths and environment cannot contain line breaks or NUL bytes")
+    args = [str(link), "serve", "--data", str(workspace), "--address", SERVICE_ADDRESS]
+    if os_name == "darwin":
+        path = home / "Library/LaunchAgents" / (SERVICE_LABEL + ".plist")
+        content = plistlib.dumps({"Label": SERVICE_LABEL, "ProgramArguments": args,
+                                 "WorkingDirectory": str(home), "EnvironmentVariables": environment,
+                                 "RunAtLoad": True, "KeepAlive": {"SuccessfulExit": False},
+                                 "ThrottleInterval": 30, "ExitTimeOut": 30,
+                                 "StandardOutPath": str(log), "StandardErrorPath": str(log)})
+    elif os_name == "linux":
+        config = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config").expanduser()
+        if not config.is_absolute():
+            raise ValueError("The systemd configuration directory must be absolute")
+        path = config / "systemd/user/sift.service"
+        def quote(value, command=False):
+            value = value.replace("%", "%%").replace("\\", "\\\\").replace('"', '\\"')
+            return '"' + (value.replace("$", "$$") if command else value) + '"'
+        content = ("# Managed by the Sift download installer\n[Unit]\nDescription=Sift local workspace\n"
+                   "[Service]\nType=simple\nExecStart=" + " ".join(quote(arg, True) for arg in args) +
+                   "\nWorkingDirectory=" + quote(str(home)) + "\n" +
+                   "".join("Environment=" + quote(key + "=" + value) + "\n" for key, value in environment.items()) +
+                   "Restart=on-failure\nRestartSec=5\nTimeoutStopSec=30\nUMask=0077\n"
+                   "[Install]\nWantedBy=default.target\n").encode()
+    else:
+        raise ValueError("Automatic startup supports macOS launchd and Linux user systemd")
+    return path, content
+
+
+def service_file(path, content):
+    """Create private files, or accept exact existing content; never overwrite."""
+    path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "rb") as source:
+            metadata = os.fstat(source.fileno())
+            if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid()
+                    or metadata.st_mode & 0o077 or (content is not None and metadata.st_size > 64 << 10)):
+                raise ValueError(f"Unsafe existing service file: {path}")
+            if content is not None and source.read((64 << 10) + 1) != content:
+                raise ValueError(f"Existing startup configuration differs; inspect it before replacing: {path}")
+    else:
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(content or b"")
+            output.flush()
+            os.fsync(output.fileno())
+
+
+def service_ready(workspace):
+    """Check this workspace using its private token; no redirects or proxies."""
+    try:
+        descriptor = os.open(workspace / "connection.json", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "rb") as source:
+            metadata = os.fstat(source.fileno())
+            if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid()
+                    or metadata.st_mode & 0o077 or metadata.st_size > 16 << 10):
+                return False
+            connection = json.load(source)
+        if not isinstance(connection, dict):
+            return False
+        token = connection.get("token")
+        if connection.get("url") != "http://" + SERVICE_ADDRESS or not isinstance(token, str) or not re.fullmatch("[a-f0-9]{64}", token):
+            return False
+        client = http.client.HTTPConnection("127.0.0.1", 57431, timeout=1)
+        try:
+            client.request("GET", "/api/health", headers={"Authorization": "Bearer " + token})
+            response = client.getresponse()
+            health = json.loads(response.read((64 << 10) + 1))
+            return response.status == 200 and isinstance(health, dict) and health.get("dataDir") == str(workspace)
+        finally:
+            client.close()
+    except (OSError, ValueError, http.client.HTTPException):
+        return False
+
+
+def manager_command(args, check=True):
+    result = subprocess.run(args, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20)
+    if check and result.returncode:
+        # In particular, never echo launchctl's environment or a connection token.
+        raise ValueError(f"{Path(args[0]).name} {args[1]} failed (exit {result.returncode}); inspect the user service manager")
+    return result.returncode == 0
+
+
+def configure_startup(link, workspace, data_dir, os_name):
+    log = data_dir / "service.log"
+    path, content = startup_configuration(link, workspace, log, os_name)
+    if os_name == "darwin":
+        manager = "/bin/launchctl"
+        domain = f"gui/{os.getuid()}"
+        manager_command([manager, "print", domain])
+        loaded = manager_command([manager, "print", domain + "/" + SERVICE_LABEL], check=False)
+    else:
+        manager = shutil.which("systemctl")
+        if not manager:
+            raise ValueError("Automatic startup requires a running systemd user session (systemctl --user)")
+        manager_command([manager, "--user", "show-environment"])
+        loaded = manager_command([manager, "--user", "is-active", "--quiet", "sift.service"], check=False)
+    # Refuse a conflicting listener before creating a unit or starting anything.
+    # An already healthy, identical managed service is left running, not restarted.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        try:
+            probe.bind(("127.0.0.1", 57431))
+        except OSError:
+            if not (loaded and service_ready(workspace)):
+                raise ValueError(f"Port {SERVICE_ADDRESS} is occupied; no process was stopped or port changed")
+    if loaded and not path.is_file():
+        raise ValueError("A Sift login service is already loaded without matching configuration; inspect it first")
+    service_file(path, content)
+    if os_name == "darwin":
+        service_file(log, None)
+        manager_command([manager, "enable", domain + "/" + SERVICE_LABEL])
+        if not loaded:
+            manager_command([manager, "bootstrap", domain, str(path)])
+        elif not service_ready(workspace):
+            # No -k: start a loaded but stopped service, never kill a running one.
+            manager_command([manager, "kickstart", domain + "/" + SERVICE_LABEL])
+    else:
+        manager_command([manager, "--user", "daemon-reload"])
+        manager_command([manager, "--user", "enable", "--now", "sift.service"])
+    deadline = time.monotonic() + 15
+    while not service_ready(workspace):
+        if time.monotonic() >= deadline:
+            raise ValueError(f"Startup registered at {path}, but readiness was not confirmed at http://{SERVICE_ADDRESS}; inspect the service logs")
+        time.sleep(0.25)
+    print(f"Sift service is running: http://{SERVICE_ADDRESS}")
+    print(f"Starts automatically at login: {path}")
+    print(f"Workspace: {workspace}")
+    if loaded:
+        print("Existing service left running; a newly installed version takes effect after a deliberate restart.")
+
+
+def install(version, bin_dir, data_dir, replace=False, modify_path=True, startup=True, workspace_dir=None):
     os_name = platform.system().lower()
     arch = {"aarch64": "arm64", "x86_64": "amd64"}.get(platform.machine(), platform.machine())
     target = os_name + "_" + arch
@@ -242,8 +403,7 @@ def install(version, bin_dir, data_dir, replace=False, modify_path=True):
         raise
     print(f"Installed Sift {version}: {link}")
     print(f"Dependency notices and documentation: {destination}")
-    print(f"Start explicitly: {link} serve")
-    print("No service, login item, app/Dock shortcut, agent skill, or Pi changes were made.")
+    print("No app/Dock shortcut, agent skill, or Pi configuration changes were made.")
     if modify_path:
         try:
             configure_path(bin_dir)
@@ -251,19 +411,34 @@ def install(version, bin_dir, data_dir, replace=False, modify_path=True):
             print(f"Warning: Sift is installed, but automatic PATH setup was skipped: {error}", file=sys.stderr)
     else:
         print("PATH setup skipped (--no-modify-path); no shell profiles were edited.")
+    if startup:
+        try:
+            workspace = workspace_directory(os_name, workspace_dir)
+            configure_startup(link, workspace, data_dir, os_name)
+        except (ValueError, OSError, subprocess.SubprocessError) as error:
+            print(f"Warning: Sift is installed, but automatic startup was not completed: {error}", file=sys.stderr)
+            print("Start manually: " + shlex.join([str(link), "serve", "--address", SERVICE_ADDRESS] +
+                                                 (["--data", str(workspace_dir)] if workspace_dir else [])), file=sys.stderr)
+    else:
+        print("Automatic startup skipped (--no-startup); existing login services were not changed.")
+        print("Start manually: " + shlex.join([str(link), "serve", "--address", SERVICE_ADDRESS] +
+                                             (["--data", str(workspace_dir)] if workspace_dir else [])))
     return destination
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Install a checksum-verified stable release from akstspace/sift without starting it")
+    parser = argparse.ArgumentParser(description="Install a checksum-verified stable release from akstspace/sift and start it at 127.0.0.1:57431 now and at login")
     parser.add_argument("--version", help="Exact stable version; default: latest published stable release")
     parser.add_argument("--bin-dir", default="~/.local/bin")
     parser.add_argument("--data-dir", default="~/.local/share/sift")
     parser.add_argument("--replace", action="store_true", help="Replace only a previously managed CLI symlink; retain old version files")
     parser.add_argument("--no-modify-path", action="store_true", help="Do not add the bin directory to shell configuration")
+    parser.add_argument("--no-startup", action="store_true", help="Do not register or start a login service; existing services are unchanged")
+    parser.add_argument("--workspace-dir", help="Task workspace for the login service; default: SIFT_DATA or the platform's Sift configuration directory")
     args = parser.parse_args()
     try:
-        install(args.version, args.bin_dir, args.data_dir, args.replace, not args.no_modify_path)
+        install(args.version, args.bin_dir, args.data_dir, args.replace, not args.no_modify_path,
+                not args.no_startup, args.workspace_dir)
     except (ValueError, OSError, tarfile.TarError) as error:
         parser.exit(1, f"Sift installation failed: {error}\n")
 

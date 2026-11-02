@@ -9,11 +9,23 @@ vi.mock("motion/react", async original => ({ ...await original<typeof import("mo
 vi.mock("../api", async original => ({ ...await original<typeof import("../api")>(), api: vi.fn() }));
 const mock = vi.mocked(api);
 beforeEach(() => { mock.mockReset(); preference.reduced = false; });
-function mount(storageReady = true) {
-  const props = { settings: snapshotFixture().settings, storageReady, onFinish: vi.fn(async () => {}), onCreateJob: vi.fn() };
+function mount(storageReady = true, storageError = "") {
+  const props = { settings: snapshotFixture().settings, storageReady, storageError, onFinish: vi.fn(async () => {}), onCreateJob: vi.fn() };
   return { ...render(<Onboarding {...props} />, { wrapper: TestProviders }), props, user: userEvent.setup() };
 }
 describe("opt-in onboarding", () => {
+  it("shows image storage failures instead of an endless spinner, while keeping setup skippable", async () => {
+    const { user } = mount(false, "RustFS exited: exit status 1; inspect /fixture/Application Support/Sift/rustfs.log");
+    await user.click(screen.getByRole("button", { name: "Connections" }));
+    expect(await screen.findByRole("status", { name: "Image storage unavailable" })).toBeDefined();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("RustFS exited: exit status 1");
+    expect(alert.textContent).toContain("You can continue without images");
+    expect(screen.queryByRole("status", { name: "Starting image storage" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Continue for now" }));
+    expect(await screen.findByText("Give your agents a way in.")).toBeDefined();
+    expect(mock).not.toHaveBeenCalled();
+  });
   it("uses the configured timezone when the OS omits one, with reduced motion and zero discovered models", async () => {
     preference.reduced = true;
     const resolved = Intl.DateTimeFormat.prototype.resolvedOptions;

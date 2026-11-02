@@ -3,8 +3,9 @@ import { cleanup } from "@testing-library/react";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-// jsdom has no visual viewport; use an explicit asynchronous frame boundary.
-globalThis.requestAnimationFrame = callback => setTimeout(() => callback(performance.now()), 0) as unknown as number;
+// jsdom has no visual viewport. Model a 60 Hz frame boundary instead of a
+// zero-delay loop that makes Motion compete with interaction/coverage work.
+globalThis.requestAnimationFrame = callback => setTimeout(() => callback(performance.now()), 1000 / 60) as unknown as number;
 globalThis.cancelAnimationFrame = id => clearTimeout(id);
 Object.defineProperty(window, "matchMedia", { writable: true, value: vi.fn(() => ({
   matches: false, media: "", onchange: null,

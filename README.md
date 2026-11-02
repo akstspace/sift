@@ -18,10 +18,12 @@ curl -fsSL https://raw.githubusercontent.com/akstspace/sift/main/scripts/install
 **Recommended:** [Inspect the installer](https://github.com/akstspace/sift/blob/main/scripts/install.sh)
 before running it, as with any script downloaded from the internet.
 
-Then start Sift:
+The installer starts Sift automatically and configures it to start at login.
+Open **http://127.0.0.1:57431**. Development stays separate on port `57432`.
+To install without starting or registering a service, pass `--no-startup`:
 
 ```sh
-~/.local/bin/sift serve
+curl -fsSL https://raw.githubusercontent.com/akstspace/sift/main/scripts/install.sh | sh -s -- --no-startup
 ```
 
 The installer needs Python 3, downloads only official GitHub HTTPS release assets,
@@ -43,8 +45,15 @@ Defaults: executable link `~/.local/bin/sift`, versioned packages
 `~/.local/share/sift/versions/VERSION/`. `--bin-dir` and `--data-dir` customize
 those **installation** paths; the latter is not your task workspace directory.
 Existing version directories, regular files, and unrelated links are not overwritten.
-Older version files are retained for manual recovery. No service is started, no
-login item/app/Dock shortcut/skill is installed, and no Pi configuration is changed.
+Older version files are retained for manual recovery. Automatic startup uses a
+per-user macOS LaunchAgent or Linux systemd unit, with no sudo. Linux needs a
+running systemd user session; unsupported sessions or port conflicts produce a
+warning and manual start instructions, without stopping another process or
+silently changing ports. Existing different startup files are never overwritten.
+No app/Dock shortcut or agent skill is installed, and no Pi configuration is changed.
+Use `--workspace-dir DIRECTORY` to select the service's task workspace; otherwise
+it uses `SIFT_DATA` or the platform's normal Sift directory. This is separate from
+the installer's `--data-dir` package storage.
 The installer adds the bin directory to your shell configuration for new terminals
 (zsh, bash, fish, or POSIX sh). Existing content is preserved and repeated installs
 do not add duplicate entries. Open a new terminal afterward, or use the command
@@ -115,8 +124,9 @@ retried. Use a meaningful `--actor` and reasons for completion/reopening.
 ```
 
 Settings can explicitly install the shared `sift` skill, CLI symlink, or login
-startup configuration. None is installed automatically; shell profiles and
-unrelated agent configurations are never edited.
+startup configuration when using a manually unpacked build. These actions do not
+edit shell profiles or unrelated agent configurations. The download installer
+already sets up the CLI, PATH, and login startup unless opted out.
 
 Each scheduled Pi job has its own exact persistent session, discovered models
 and thinking levels, IANA timezone, and daily/weekday/interval/cron schedule.

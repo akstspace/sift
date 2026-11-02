@@ -195,7 +195,14 @@ func TestRustFSImagesBackupRestoreIntegration(t *testing.T) {
 	if os.Getenv("SIFT_INTEGRATION") != "1" {
 		t.Skip("Set SIFT_INTEGRATION=1 to launch bundled RustFS")
 	}
-	s := testService(t)
+	// Exercise the platform-default macOS shape, including whitespace and
+	// Unicode. Upload, backup, and restore must retain this exact objects volume.
+	dir := filepath.Join(t.TempDir(), "Application Support", "Sift 照片")
+	s, err := NewService(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(s.Close)
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	if e := s.Storage.Start(ctx, s.Dir); e != nil {

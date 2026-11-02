@@ -26,11 +26,13 @@ import { InstallApp } from "./InstallApp";
 export function Onboarding({
   settings,
   storageReady,
+  storageError = "",
   onFinish,
   onCreateJob,
 }: {
   settings: Settings;
   storageReady: boolean;
+  storageError?: string;
   onFinish: (settings: Settings) => Promise<void>;
   onCreateJob: () => void;
 }) {
@@ -209,14 +211,27 @@ export function Onboarding({
                         Bundled RustFS · private loopback connection
                       </small>
                     </div>
-                    <span className={storageReady ? "success" : "muted"}>
+                    <span className={storageReady ? "success" : storageError ? "error-text" : "muted"}
+                      role="status" aria-label={storageReady ? "Image storage ready" : storageError ? "Image storage unavailable" : "Starting image storage"}>
                       {storageReady ? (
                         <CheckCircle2 size={20} />
+                      ) : storageError ? (
+                        <XCircle size={20} />
                       ) : (
                         <LoaderCircle size={20} className="spin" />
                       )}
                     </span>
                   </div>
+                  {!storageReady && storageError && (
+                    <div className="error" role="alert">
+                      <XCircle size={16} />
+                      <div>
+                        <strong>Image storage is unavailable.</strong>
+                        <p>{storageError}</p>
+                        <p>Inspect the RustFS log, then restart Sift. You can continue without images.</p>
+                      </div>
+                    </div>
+                  )}
                   <div className="connection-row">
                     <Terminal size={20} />
                     <div>

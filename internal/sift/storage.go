@@ -38,6 +38,10 @@ type Storage struct {
 }
 
 func (st *Storage) Start(ctx context.Context, dir string) error {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
 	st.dir = dir
 	binary := os.Getenv("SIFT_RUSTFS")
 	if binary == "" {
@@ -69,14 +73,26 @@ func (st *Storage) Start(ctx context.Context, dir string) error {
 		return err
 	}
 	_ = os.Chmod(secretPath, 0600)
-	_ = os.MkdirAll(filepath.Join(dir, "objects"), 0700)
+	if err = os.MkdirAll(filepath.Join(dir, "objects"), 0700); err != nil {
+		return err
+	}
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return err
 	}
 	st.endpoint = l.Addr().String()
 	_ = l.Close()
-	st.cmd = exec.Command(binary, "server", "--address", st.endpoint, filepath.Join(dir, "objects"))
+	// RustFS 1.0.4 splits whitespace inside absolute volume arguments, including
+	// macOS's default Application Support path. Keep the same on-disk volume,
+	// but resolve it relative to the child's workspace instead of passing it.
+	if !filepath.IsAbs(binary) && strings.ContainsRune(binary, os.PathSeparator) {
+		binary, err = filepath.Abs(binary)
+		if err != nil {
+			return err
+		}
+	}
+	st.cmd = exec.Command(binary, "server", "--address", st.endpoint, "objects")
+	st.cmd.Dir = dir
 	st.cmd.Env = append(os.Environ(), "RUSTFS_ACCESS_KEY=sift-local", "RUSTFS_SECRET_KEY_FILE="+secretPath, "RUSTFS_CONSOLE_ENABLE=false")
 	log, err := os.OpenFile(filepath.Join(dir, "rustfs.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {

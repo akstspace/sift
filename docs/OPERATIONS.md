@@ -57,10 +57,36 @@ No remote update success is claimed until a real release exists and is tested.
 Settings' setup actions are opt-in. CLI installation makes a symlink in
 `~/.local/bin` and refuses an existing unrelated file. Skill installation writes
 only `~/.agents/skills/sift/SKILL.md`, asking before replacing different content.
-Startup writes a macOS LaunchAgent or Linux user-systemd unit; it does not edit
-shell profiles. The separate download installer adds its bin directory to shell
-PATH by default; `--no-modify-path` opts out. Startup behavior must be tested on
-the actual target OS.
+Settings' Startup action writes a macOS LaunchAgent or Linux user-systemd unit;
+it does not edit shell profiles. The download installer now configures a per-user
+login service and starts it immediately at `127.0.0.1:57431`. It uses the managed
+CLI link, an explicit workspace and address, and preserves the executable search
+path for local Pi discovery without copying authentication secrets. A running
+matching service is not restarted during installation; a newly installed version
+takes effect after a deliberate restart.
+
+`--no-startup` skips registration and startup without disabling any existing
+service. `--workspace-dir` selects a task workspace, otherwise `SIFT_DATA` or the
+platform default is used. Installer `--data-dir` remains package storage, not
+the task workspace. `--no-modify-path` independently opts out of shell PATH setup.
+Linux requires a systemd user session; no system-wide unit, sudo, or lingering is
+configured. Startup failures warn without undoing a checksum-verified installation.
+Conflicting ports and different existing units are never replaced automatically.
+
+On macOS, service output is in the install directory's `service.log`. Inspect
+`launchctl print gui/$(id -u)/space.akst.sift`; stop with
+`launchctl bootout gui/$(id -u) "$HOME/Library/LaunchAgents/space.akst.sift.plist"`.
+For a deliberate restart, use `launchctl kickstart -k gui/$(id -u)/space.akst.sift`.
+On Linux use `systemctl --user status sift.service`, `journalctl --user -u sift.service`,
+and `systemctl --user stop` or `restart sift.service`. To disable future logins,
+use `launchctl disable gui/$(id -u)/space.akst.sift` on macOS or
+`systemctl --user disable --now sift.service` on Linux.
+
+RustFS runs with a relative `objects` volume inside the unchanged workspace.
+This avoids RustFS 1.0.4 splitting whitespace in paths such as macOS's
+`Application Support`. Startup failures are reported in health and onboarding;
+inspect the workspace's `rustfs.log` before restarting. Task data does not need
+to be moved or reset.
 
 ## Development workspaces
 

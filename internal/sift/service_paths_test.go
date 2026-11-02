@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -287,11 +288,11 @@ func TestSchedulerRealTickAndCancelledStorageStartup(t *testing.T) {
 }
 
 func TestStorageStartupPathFailuresAreActionable(t *testing.T) {
-	for _, entry := range []string{"runtime", "runtime rename", "rustfs-secret", "rustfs.log"} {
+	for _, entry := range []string{"runtime", "runtime rename", "rustfs-secret", "objects", "rustfs.log"} {
 		t.Run(entry, func(t *testing.T) {
 			dir := t.TempDir()
 			t.Setenv("SIFT_RUSTFS", "")
-			if entry == "runtime" {
+			if entry == "runtime" || entry == "objects" {
 				os.WriteFile(filepath.Join(dir, entry), []byte("occupied"), 0600)
 			} else if entry == "runtime rename" {
 				if err := os.MkdirAll(filepath.Join(dir, "runtime", "rustfs-1.0.4", "rustfs-"+runtime.GOOS+"-"+runtime.GOARCH), 0700); err != nil {
@@ -323,5 +324,33 @@ func TestStorageStartupPathFailuresAreActionable(t *testing.T) {
 	st.Close()
 	if time.Since(start) > time.Second {
 		t.Fatal("shutdown waited for an already exited RustFS child")
+	}
+}
+
+func TestStorageRelativeExecutableUsesOriginalWorkingDirectory(t *testing.T) {
+	working, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	executable, err := exec.LookPath("echo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	relative, err := filepath.Rel(working, executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SIFT_RUSTFS", relative)
+	dir := filepath.Join(t.TempDir(), "Application Support", "Sift 照片")
+	s, err := NewService(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(s.Close)
+	if err = s.Storage.Start(context.Background(), dir); err == nil || !strings.Contains(err.Error(), "RustFS exited") {
+		t.Fatal("echo fixture must exit rather than become ready", err)
+	}
+	if s.Storage.cmd.Path != executable || s.Storage.cmd.Dir != dir || s.Storage.cmd.Args[len(s.Storage.cmd.Args)-1] != "objects" {
+		t.Fatal("relative executable or volume was resolved against the wrong directory", s.Storage.cmd.Path, s.Storage.cmd.Dir, s.Storage.cmd.Args)
 	}
 }

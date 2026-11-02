@@ -53,6 +53,21 @@ async function choose(label: string, name: string) {
   fireEvent.click(screen.getByRole("combobox", { name: label })); fireEvent.click(await screen.findByRole("option", { name }));
 }
 describe("workspace integration", () => {
+  it("passes real storage errors into onboarding and clears them when health recovers", async () => {
+    current = snapshotFixture({ settings: { ...current.settings, onboarded: false } });
+    const request = mock.getMockImplementation()!, interval = vi.spyOn(globalThis, "setInterval");
+    let health = { ready: false, error: "RustFS exited; inspect rustfs.log" };
+    mock.mockImplementation(async (path, ...args) => path === "/health" ? { storage: health } : request(path, ...args));
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Connections" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("RustFS exited");
+    health = { ready: true, error: "" };
+    const tick = interval.mock.calls.find(([, delay]) => delay === 15000)![0] as () => void;
+    await act(async () => tick());
+    expect(await screen.findByRole("status", { name: "Image storage ready" })).toBeDefined();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
   it("keeps malformed historical dates out of Today's completed count and includes only eligible civil dates", async () => {
     preference.reduced = true;
     const tasks = [
@@ -263,13 +278,19 @@ describe("workspace integration", () => {
     mock.mockRejectedValueOnce(new Error("View not saved")); await user.click(screen.getByRole("radio", { name: "Kanban view" }));
     await waitFor(() => expect(error).toHaveBeenCalledWith("View not saved"));
   });
-  it("creates project-scoped children and protects real parent navigation", async () => {
-    const parent = taskFixture({ project: "p" }), child = taskFixture({ id: "child", title: "Full child task", parentId: parent.id, project: "p" });
-    const { user } = await mount(snapshotFixture({ projects: [{ id: "p", name: "Research project", archived: false, color: "sea", icon: "folder" }], tasks: [parent, child] }));
+  it("creates project-scoped tasks without changing their project when cancelled", async () => {
+    const { user } = await mount(snapshotFixture({ projects: [{ id: "p", name: "Research project", archived: false, color: "sea", icon: "folder" }] }));
     await user.click(screen.getByRole("button", { name: "Research project" })); await screen.findByRole("heading", { name: "Research project", level: 1 });
     await user.click(within(document.querySelector(".page-heading")!).getByRole("button", { name: "New task" }));
     expect(screen.getByRole("combobox", { name: "Project" }).textContent).toBe("Research project");
     await user.click(screen.getByRole("button", { name: "Cancel" })); await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.click(screen.getByRole("button", { name: "Backlog" }));
+    await screen.findByRole("heading", { name: "Backlog", level: 1 });
+    expect(current.tasks).toEqual([]);
+  });
+  it("creates project-scoped children and protects real parent navigation", async () => {
+    const parent = taskFixture({ project: "p" }), child = taskFixture({ id: "child", title: "Full child task", parentId: parent.id, project: "p" });
+    const { user } = await mount(snapshotFixture({ projects: [{ id: "p", name: "Research project", archived: false, color: "sea", icon: "folder" }], tasks: [parent, child] }));
     await user.click(screen.getByRole("button", { name: "Backlog" }));
     await screen.findByRole("heading", { name: "Backlog", level: 1 });
     await user.click(await screen.findByRole("button", { name: parent.title }));

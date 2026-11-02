@@ -1,4 +1,8 @@
 {
+  ".cache/security/installer.py:python.lang.security.audit.dangerous-subprocess-use-audit:a5df8fdabd5fc3150dc4975daf7a9d81200c1b5ecdc0d12ce6e0fefc2d27eede": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Installer-only helper runs /bin/launchctl or systemctl resolved from the installing user's PATH, with source-authored user-service subcommands and argv lists, never a shell. Label, user domain and address are fixed; configured paths remain single arguments. No downloaded content, HTTP request or credential selects a command. Execution has a 20-second timeout, disabled stdin and captured output that is not echoed. Hermetic tests mock all service-manager calls, including failure and conflicting-port paths."
+  },
   "scripts/test-tooling.py:python.lang.security.audit.dangerous-subprocess-use-audit:80b68511c87433323a4dc2f61a05f546dcd7b1a992155482da217616cfec0c22": {
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
     "reason": "Installer quoting regression executes only the enumerated absolute /bin/sh, /bin/bash, and optional /bin/zsh paths with generated PATH blocks in a disposable TemporaryDirectory. All directory names and PATH cases are fixed test fixtures, including intentional shell metacharacters whose non-execution is asserted. No network, user-provided command, ambient HOME, or real shell profile is used. Running the generated shell text is necessary to test quoting rather than merely compare strings."
@@ -231,13 +235,13 @@
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
     "reason": "Bundled runtime cache is a private directory; 0700 owner search is required to launch the embedded RustFS executable. No group/other access is granted."
   },
-  "internal/sift/storage.go:go.lang.correctness.permissions.incorrect-default-permission:2f9b848708a8f20836dc25fbe77b8a5cb94cd185e0f9f32cce0f60703eb390ef": {
+  "internal/sift/storage.go:go.lang.correctness.permissions.incorrect-default-permission:cf7a3277460385e35341fd1e98d3b4cd7ab4c9cf96b04530a9aa567c40df0ecb": {
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
     "reason": "Private RustFS object directory must be traversable by its owner. 0700 is the least useful directory permission; 0600 would prevent storage access."
   },
-  "internal/sift/storage.go:go.lang.security.audit.dangerous-exec-command:ca1cd08b2a52cbe6ed6d22a21cf25d47e24af7ec0b331de82efbf4b11da1ef7d": {
+  "internal/sift/storage.go:go.lang.security.audit.dangerous-exec-command:eac65546eef6b587582ae57f49240e911604b8f68c220a087eee3017f31ed74b": {
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
-    "reason": "Launches target-specific embedded RustFS after hash comparison, or an explicit local SIFT_RUSTFS override. Executable/argv are not request-controlled; arguments specify server, a loopback endpoint and a workspace object path. No shell expansion."
+    "reason": "Launches target-specific embedded RustFS after hash comparison, or an explicit local SIFT_RUSTFS override. Relative executable paths containing a separator are resolved before changing the child working directory. Executable/argv are not request-controlled; arguments are literal server, a locally allocated loopback endpoint and literal objects within the existing workspace. No shell expansion or data migration."
   },
   "internal/sift/store.go:go.lang.correctness.permissions.incorrect-default-permission:017eb8be54269f428d38121c838194548b69daa8f539d1ac6afcc758d384c72e": {
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",

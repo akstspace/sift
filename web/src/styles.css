@@ -2331,6 +2331,7 @@ code {
 }
 .onboard-content .error {
   margin-top: 18px;
+  overflow-wrap: anywhere;
 }
 .finish-note {
   display: flex;

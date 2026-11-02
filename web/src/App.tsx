@@ -87,6 +87,7 @@ function Workspace() {
     [connectionAttempt, setConnectionAttempt] = useState(0),
     [loadError, setLoadError] = useState(""),
     [storageReady, setStorageReady] = useState(false),
+    [storageError, setStorageError] = useState(""),
     [sidebarOpen, setSidebarOpen] = useState(() => { try { return localStorage.getItem("sift.sidebar") !== "collapsed"; } catch { return true; } }),
     [darkTheme, setDarkTheme] = useState(false),
     [notifications, setNotifications] = useState(false),
@@ -128,9 +129,15 @@ function Workspace() {
       .then(setCatalog)
       .catch(() => {});
     const health = () =>
-      api<{ storage: { ready: boolean } }>("/health")
-        .then((h) => setStorageReady(h.storage.ready))
-        .catch(() => {});
+      api<{ storage: { ready: boolean; error?: string } }>("/health")
+        .then((h) => {
+          setStorageReady(h.storage.ready);
+          setStorageError(h.storage.error || "");
+        })
+        .catch(() => {
+          setStorageReady(false);
+          setStorageError("Cannot check image storage. Check the local service connection.");
+        });
     health();
     const timer = setInterval(() => {
       setClock(Date.now());
@@ -379,6 +386,7 @@ function Workspace() {
         <Suspense fallback={<div className="loading-screen"><Busy label="Opening setup" /></div>}><Onboarding
           settings={snapshot.settings}
           storageReady={storageReady}
+          storageError={storageError}
           onFinish={async (cfg) => {
             await saveSettings(cfg);
             setOnboarding(false);

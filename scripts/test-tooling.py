@@ -13,7 +13,7 @@ import tarfile
 import tempfile
 import unittest
 from datetime import date, timedelta
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 import local_api
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -496,6 +496,8 @@ class InstallerTests(unittest.TestCase):
         patch.object(NS["platform"], "system", return_value="Darwin").start()
         patch.object(NS["platform"], "machine", return_value="arm64").start()
         patch.dict(NS, {"fetch": self.fetch}).start()
+        self.startup = Mock()
+        patch.dict(NS, {"configure_startup": self.startup}).start()
         # Existing archive/install tests opt out; PATH behavior is exercised in
         # disposable HOME directories below, never the developer's shell profile.
         output = redirect_stdout(io.StringIO())
@@ -512,7 +514,7 @@ class InstallerTests(unittest.TestCase):
         return self.blob
 
     def install(self, version="0.1.0", replace=False):
-        return NS["install"](version, self.bin, self.data, replace, modify_path=False)
+        return NS["install"](version, self.bin, self.data, replace, modify_path=False, startup=False)
 
     def test_install_and_notices_no_execution(self):
         destination = self.install()
@@ -580,7 +582,7 @@ class InstallerTests(unittest.TestCase):
             with self.subTest(machine=machine), tempfile.TemporaryDirectory() as temporary:
                 with patch.object(NS["platform"], "system", return_value="Linux"), patch.object(NS["platform"], "machine", return_value=machine):
                     self.checksum = f"{hashlib.sha256(self.blob).hexdigest()}  sift_linux_{target}.tar.gz\n"
-                    NS["install"]("0.1.0", Path(temporary) / "bin", Path(temporary) / "data", modify_path=False)
+                    NS["install"]("0.1.0", Path(temporary) / "bin", Path(temporary) / "data", modify_path=False, startup=False)
                     self.assertTrue(self.requests[-1].endswith(f"sift_linux_{target}.tar.gz"))
 
     def test_prerelease_draft_and_invalid_latest(self):
@@ -631,6 +633,36 @@ class InstallerTests(unittest.TestCase):
         self.assertIn("akstspace/sift", result.stdout)
         self.assertIn("--replace", result.stdout)
         self.assertIn("--no-modify-path", result.stdout)
+        self.assertIn("--no-startup", result.stdout)
+        self.assertIn("--workspace-dir", result.stdout)
+
+    def test_default_startup_only_after_verified_install_and_explicit_opt_out(self):
+        home = self.root / "home"
+        with patch.dict(os.environ, {"HOME": str(home)}, clear=True):
+            self.checksum = "0" * 64 + "  sift_darwin_arm64.tar.gz"
+            with self.assertRaisesRegex(ValueError, "mismatch"):
+                NS["install"]("0.1.0", self.bin, self.data, modify_path=False)
+            self.startup.assert_not_called()
+            self.checksum = None
+            destination = NS["install"]("0.1.0", self.bin, self.data, modify_path=False)
+            self.startup.assert_called_once_with((self.bin / "sift").absolute().parent.resolve() / "sift", (home / "Library/Application Support/Sift").resolve(), self.data.resolve(), "darwin")
+            self.assertTrue((destination / "sift").is_file())
+            self.startup.reset_mock()
+            with redirect_stdout(io.StringIO()) as output:
+                NS["install"]("0.1.1", self.bin, self.data, replace=True, modify_path=False, startup=False,
+                              workspace_dir=self.root / "custom workspace")
+            self.startup.assert_not_called()
+            self.assertIn("--data", output.getvalue())
+            self.assertIn("custom workspace", output.getvalue())
+
+    def test_startup_failure_retains_install_and_does_not_claim_running(self):
+        for index, error in enumerate([ValueError("Port occupied"), OSError("No user session"), subprocess.TimeoutExpired("launchctl", 20)]):
+            with self.subTest(error=error), patch.dict(NS, {"configure_startup": Mock(side_effect=error)}), redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()) as errors:
+                destination = NS["install"](f"0.1.{index}", self.bin, self.data, replace=True, modify_path=False, workspace_dir=self.root / "custom workspace")
+            self.assertTrue((destination / "sift").is_file())
+            self.assertIn("automatic startup was not completed", errors.getvalue())
+            self.assertIn("Start manually:", errors.getvalue())
+            self.assertNotIn("service is running", output.getvalue())
 
     def test_default_install_adds_path_only_after_success_and_supports_opt_out(self):
         home = self.root / "home"
@@ -657,6 +689,170 @@ class InstallerTests(unittest.TestCase):
         self.assertTrue((self.bin / "sift").is_symlink())
         self.assertIn("installed", errors.getvalue())
         self.assertIn("fixture profile refusal", errors.getvalue())
+
+
+class InstallerStartupTests(unittest.TestCase):
+    """All service-manager calls and network operations are mocked."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="sift-startup-test-")
+        self.addCleanup(self.tmp.cleanup)
+        self.home = Path(self.tmp.name).resolve()
+        self.link, self.workspace, self.data = self.home / "bin/sift", self.home / "Application Support/Sift", self.home / "installation"
+        self.addCleanup(patch.stopall)
+        patch.dict(os.environ, {"HOME": str(self.home), "PATH": "/fixture/bin:/usr/bin:/bin", "SIFT_PORT": "57432"}, clear=True).start()
+        self.commands = []
+        self.loaded = False
+        self.manager_command = NS["manager_command"]
+        self.service_ready = NS["service_ready"]
+        self.ready = Mock(return_value=True)
+        self.socket = MagicMock()
+        patch.dict(NS, {"manager_command": self.command, "service_ready": self.ready}).start()
+        patch.object(NS["socket"], "socket", return_value=self.socket).start()
+        patch.object(NS["shutil"], "which", return_value="/usr/bin/systemctl").start()
+
+    def command(self, args, check=True):
+        self.commands.append(args)
+        if args[1] == "print" and "/" in args[2][4:]:return self.loaded
+        if "is-active" in args:return self.loaded
+        return True
+
+    def configure(self, system="darwin"):
+        with redirect_stdout(io.StringIO()) as output:
+            NS["configure_startup"](self.link, self.workspace, self.data, system)
+        return output.getvalue()
+
+    def test_macos_registers_and_starts_fixed_port_without_shell_or_development_override(self):
+        output = self.configure()
+        path = self.home / "Library/LaunchAgents/space.akst.sift.plist"
+        unit = NS["plistlib"].loads(path.read_bytes())
+        self.assertEqual(unit["ProgramArguments"], [str(self.link), "serve", "--data", str(self.workspace), "--address", "127.0.0.1:57431"])
+        self.assertTrue(unit["RunAtLoad"])
+        self.assertEqual(unit["KeepAlive"], {"SuccessfulExit": False})
+        self.assertNotIn("SIFT_PORT", unit["EnvironmentVariables"])
+        self.assertEqual(unit["EnvironmentVariables"]["PATH"], f"{self.link.parent}:/fixture/bin:/usr/bin:/bin")
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual((self.data / "service.log").stat().st_mode & 0o777, 0o600)
+        self.assertIn(["/bin/launchctl", "bootstrap", f"gui/{os.getuid()}", str(path)], self.commands)
+        self.assertIn("http://127.0.0.1:57431", output)
+        self.assertFalse(self.workspace.exists(), "Installer must let Sift initialize the workspace")
+        self.assertFalse(any("bootout" in args or "kickstart" in args for args in self.commands))
+
+    def test_linux_enables_and_starts_user_unit_with_escaped_paths_and_environment(self):
+        self.link = self.home / 'bin % $ " slash\\/sift'
+        with patch.dict(os.environ, {"XDG_CONFIG_HOME": str(self.home / "config"), "SIFT_PI": str(self.home / 'Pi % $ " binary')}):
+            self.configure("linux")
+        text = (self.home / "config/systemd/user/sift.service").read_text()
+        self.assertIn('"--address" "127.0.0.1:57431"', text)
+        self.assertIn('bin %% $$ \\" slash\\\\/sift', text)
+        self.assertIn('Environment="SIFT_PI=', text)
+        self.assertIn("Restart=on-failure", text)
+        self.assertIn("WantedBy=default.target", text)
+        self.assertIn(["/usr/bin/systemctl", "--user", "daemon-reload"], self.commands)
+        self.assertIn(["/usr/bin/systemctl", "--user", "enable", "--now", "sift.service"], self.commands)
+        self.assertFalse(any("--system" in args or "restart" in args for args in self.commands))
+
+    def test_workspace_defaults_overrides_and_invalid_configuration(self):
+        self.assertEqual(NS["workspace_directory"]("darwin"), self.home / "Library/Application Support/Sift")
+        self.assertEqual(NS["workspace_directory"]("linux"), self.home / ".config/Sift")
+        with patch.dict(os.environ, {"XDG_CONFIG_HOME": str(self.home / "config")}):
+            self.assertEqual(NS["workspace_directory"]("linux"), self.home / "config/Sift")
+        with patch.dict(os.environ, {"SIFT_DATA": str(self.home / "custom")}):
+            self.assertEqual(NS["workspace_directory"]("darwin"), self.home / "custom")
+            self.assertEqual(NS["workspace_directory"]("linux", self.workspace), self.workspace)
+        with patch.dict(os.environ, {"XDG_CONFIG_HOME": "relative"}):
+            with self.assertRaisesRegex(ValueError, "absolute"):NS["workspace_directory"]("linux")
+            with self.assertRaisesRegex(ValueError, "absolute"):NS["startup_configuration"](self.link, self.workspace, self.data / "log", "linux")
+        with self.assertRaisesRegex(ValueError, "supports"):NS["startup_configuration"](self.link, self.workspace, self.data / "log", "windows")
+        for system in ["darwin", "linux"]:
+            with patch.dict(os.environ, {"SIFT_PI": "bad\nvalue"}), self.assertRaisesRegex(ValueError, "line breaks"):
+                NS["startup_configuration"](self.link, self.workspace, self.data / "log", system)
+
+    def test_busy_port_never_stops_service_or_writes_configuration(self):
+        self.socket.__enter__.return_value.bind.side_effect = OSError("in use")
+        with self.assertRaisesRegex(ValueError, "occupied"):self.configure()
+        self.assertFalse((self.home / "Library").exists())
+        self.assertFalse(any("bootstrap" in args or "enable" in args for args in self.commands))
+
+    def test_matching_running_service_is_idempotent_and_never_restarted(self):
+        self.configure()
+        self.commands.clear()
+        self.loaded = True
+        self.socket.__enter__.return_value.bind.side_effect = OSError("in use")
+        output = self.configure()
+        self.assertIn("left running", output)
+        self.assertFalse(any("bootstrap" in args for args in self.commands))
+        self.ready.return_value = False
+        with self.assertRaisesRegex(ValueError, "occupied"):self.configure()
+
+    def test_loaded_but_stopped_macos_service_starts_without_forced_restart(self):
+        self.configure()
+        self.commands.clear();self.loaded = True
+        self.ready.side_effect = [False, True]
+        self.configure()
+        self.assertIn(["/bin/launchctl", "kickstart", f"gui/{os.getuid()}/space.akst.sift"], self.commands)
+        self.assertFalse(any("-k" in args for args in self.commands))
+
+    def test_existing_or_loaded_different_units_are_not_replaced(self):
+        self.loaded = True
+        with self.assertRaisesRegex(ValueError, "without matching"):self.configure()
+        self.loaded = False
+        path, _ = NS["startup_configuration"](self.link, self.workspace, self.data / "service.log", "darwin")
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"user configuration")
+        path.chmod(0o600)
+        with self.assertRaisesRegex(ValueError, "differs"):self.configure()
+        self.assertEqual(path.read_bytes(), b"user configuration")
+
+    def test_missing_manager_and_unconfirmed_readiness_are_actionable(self):
+        with patch.object(NS["shutil"], "which", return_value=None), self.assertRaisesRegex(ValueError, "systemd user session"):
+            self.configure("linux")
+        self.ready.return_value = False
+        with patch.object(NS["time"], "monotonic", side_effect=[0, 16]), self.assertRaisesRegex(ValueError, "readiness was not confirmed"):
+            self.configure()
+        self.ready.side_effect = [False, True]
+        with patch.object(NS["time"], "sleep") as sleep:self.configure()
+        sleep.assert_called_once_with(0.25)
+
+    def test_service_files_refuse_symlinks_special_files_and_unsafe_permissions(self):
+        path = self.home / "unit"
+        target = self.home / "keep";target.write_bytes(b"keep")
+        path.symlink_to(target)
+        with self.assertRaises(OSError):NS["service_file"](path, b"new")
+        self.assertEqual(target.read_bytes(), b"keep");path.unlink()
+        os.mkfifo(path)
+        with self.assertRaisesRegex(ValueError, "Unsafe"):NS["service_file"](path, b"new")
+        path.unlink();path.write_bytes(b"new");path.chmod(0o644)
+        with self.assertRaisesRegex(ValueError, "Unsafe"):NS["service_file"](path, b"new")
+        path.chmod(0o600);NS["service_file"](path, b"new")
+
+    def test_manager_command_is_bounded_and_does_not_leak_output(self):
+        with patch.object(subprocess, "run", return_value=Mock(returncode=1, stdout="private", stderr="private")) as run:
+            self.assertFalse(self.manager_command(["/bin/launchctl", "print", "fixture"], check=False))
+            with self.assertRaisesRegex(ValueError, "failed") as failure:
+                self.manager_command(["/bin/launchctl", "bootstrap", "fixture"])
+            self.assertNotIn("private", str(failure.exception))
+            self.assertEqual(run.call_args.kwargs["timeout"], 20)
+            self.assertEqual(run.call_args.kwargs["stdin"], subprocess.DEVNULL)
+
+    def test_readiness_requires_private_connection_and_authenticated_workspace_match(self):
+        self.workspace.mkdir(parents=True)
+        path = self.workspace / "connection.json"
+        connection = {"url": "http://127.0.0.1:57431", "token": "a" * 64, "pid": 123}
+        def save(value):path.write_text(json.dumps(value));path.chmod(0o600)
+        http = Mock();response = http.getresponse.return_value
+        response.status = 200;response.read.return_value = json.dumps({"dataDir": str(self.workspace)}).encode()
+        with patch.object(NS["http"].client, "HTTPConnection", return_value=http) as factory:
+            self.assertFalse(self.service_ready(self.workspace))
+            for value in [[], {}, {**connection, "url": "http://127.0.0.1:57432"}, {**connection, "token": "bad\nheader"}]:
+                save(value);self.assertFalse(self.service_ready(self.workspace))
+            factory.assert_not_called()
+            save(connection);self.assertTrue(self.service_ready(self.workspace))
+            http.request.assert_called_once_with("GET", "/api/health", headers={"Authorization": "Bearer " + connection["token"]})
+            for status, value in [(302, {}), (200, []), (200, {"dataDir": "/other/workspace"})]:
+                response.status = status;response.read.return_value = json.dumps(value).encode()
+                self.assertFalse(self.service_ready(self.workspace))
+            path.chmod(0o644);self.assertFalse(self.service_ready(self.workspace))
+            path.unlink();path.symlink_to(self.home / "missing");self.assertFalse(self.service_ready(self.workspace))
 
 
 class InstallerPathTests(unittest.TestCase):
