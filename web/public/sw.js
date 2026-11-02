@@ -1,0 +1,4 @@
+self.addEventListener('install',()=>self.skipWaiting());
+self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
+// Never cache private API responses, images, or stale workspace HTML.
+self.addEventListener('fetch',event=>{if(event.request.mode==='navigate'){event.respondWith(fetch(event.request).catch(()=>new Response('<!doctype html><html lang="en"><meta name="viewport" content="width=device-width"><title>Start Sift</title><body style="font:16px system-ui;padding:48px;max-width:540px;margin:auto"><h1>Your workspace is local.</h1><p>Start the Sift service to reconnect. Your tasks remain on this computer.</p><pre>sift serve</pre><a href="/">Try again</a></body></html>',{headers:{'Content-Type':'text/html','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"}})))}});

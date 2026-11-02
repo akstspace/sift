@@ -1,0 +1,354 @@
+package sift
+
+import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
+)
+
+type UpdateInfo struct {
+	Current   string         `json:"current"`
+	Latest    string         `json:"latest"`
+	Available bool           `json:"available"`
+	URL       string         `json:"url"`
+	Error     string         `json:"error"`
+	CheckedAt time.Time      `json:"checkedAt"`
+	Assets    []ReleaseAsset `json:"-"`
+}
+type ReleaseAsset struct {
+	Name string `json:"name"`
+	URL  string `json:"browser_download_url"`
+}
+
+func (s *Service) CheckUpdate(ctx context.Context) UpdateInfo {
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
+	info := UpdateInfo{Current: Version, CheckedAt: time.Now()}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/akstspace/sift/releases/latest", nil)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "Sift/"+Version)
+	r, err := releaseClient().Do(req)
+	if err != nil {
+		info.Error = "Cannot reach GitHub: " + err.Error()
+	} else {
+		defer r.Body.Close()
+		if r.StatusCode == 404 {
+			info.Error = "No public Sift release has been published yet"
+		} else if r.StatusCode != 200 {
+			info.Error = fmt.Sprintf("GitHub returned %d; try again later", r.StatusCode)
+		} else {
+			var release struct {
+				Tag        string         `json:"tag_name"`
+				HTML       string         `json:"html_url"`
+				Prerelease bool           `json:"prerelease"`
+				Assets     []ReleaseAsset `json:"assets"`
+			}
+			if err = json.NewDecoder(io.LimitReader(r.Body, 2<<20)).Decode(&release); err != nil {
+				info.Error = err.Error()
+			} else if !release.Prerelease {
+				info.Latest = release.Tag
+				info.URL = release.HTML
+				info.Assets = release.Assets
+				info.Available = newerVersion(release.Tag, Version)
+			}
+		}
+	}
+	s.update = info
+	return info
+}
+func newerVersion(a, b string) bool {
+	var av, bv [3]int
+	stable := strings.TrimPrefix(a, "v")
+	current := strings.TrimSuffix(strings.TrimPrefix(b, "v"), "-dev")
+	_, ea := fmt.Sscanf(stable, "%d.%d.%d", &av[0], &av[1], &av[2])
+	_, eb := fmt.Sscanf(current, "%d.%d.%d", &bv[0], &bv[1], &bv[2])
+	if ea != nil || eb != nil || av[0] < 0 || av[1] < 0 || av[2] < 0 || bv[0] < 0 || bv[1] < 0 || bv[2] < 0 ||
+		stable != fmt.Sprintf("%d.%d.%d", av[0], av[1], av[2]) || current != fmt.Sprintf("%d.%d.%d", bv[0], bv[1], bv[2]) {
+		return false
+	}
+	for i := range av {
+		if av[i] != bv[i] {
+			return av[i] > bv[i]
+		}
+	}
+	return strings.HasSuffix(b, "-dev")
+}
+func allowedReleaseURL(v string) bool {
+	return strings.HasPrefix(v, "https://github.com/akstspace/sift/releases/download/")
+}
+
+// Clone the configured client so tests and callers keep their transport, while
+// no redirect can downgrade TLS or leave GitHub's release delivery hosts.
+func releaseClient() *http.Client {
+	client := *http.DefaultClient
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return invalid("Too many release redirects")
+		}
+		if !allowedReleaseRedirect(req.URL) {
+			return invalid("Release redirect is outside GitHub HTTPS asset hosts")
+		}
+		return nil
+	}
+	return &client
+}
+func allowedReleaseRedirect(u *url.URL) bool {
+	if u.Scheme != "https" || u.User != nil || (u.Port() != "" && u.Port() != "443") {
+		return false
+	}
+	switch u.Hostname() {
+	case "github.com", "api.github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com":
+		return true
+	}
+	return false
+}
+func downloadRelease(ctx context.Context, url string, limit int64) ([]byte, error) {
+	if !allowedReleaseURL(url) {
+		return nil, invalid("Release asset is outside akstspace/sift")
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	r, err := releaseClient().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Body.Close()
+	if r.StatusCode != 200 {
+		return nil, fmt.Errorf("Download failed: HTTP %d", r.StatusCode)
+	}
+	b, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
+	if int64(len(b)) > limit {
+		return nil, invalid("Release exceeds download limit")
+	}
+	return b, err
+}
+func (s *Service) ApplyUpdate(ctx context.Context) (map[string]any, error) {
+	info := s.CheckUpdate(ctx)
+	if info.Error != "" {
+		return nil, invalid("%s", info.Error)
+	}
+	if !info.Available {
+		return nil, invalid("No newer stable release is available")
+	}
+	name := "sift_" + runtime.GOOS + "_" + runtime.GOARCH + ".tar.gz"
+	var asset, checks string
+	for _, a := range info.Assets {
+		if a.Name == name {
+			asset = a.URL
+		}
+		if a.Name == "checksums.txt" {
+			checks = a.URL
+		}
+	}
+	if asset == "" || checks == "" {
+		return nil, invalid("Release lacks this platform's binary or checksums.txt")
+	}
+	sumFile, err := downloadRelease(ctx, checks, 1<<20)
+	if err != nil {
+		return nil, err
+	}
+	var expected string
+	for _, line := range strings.Split(string(sumFile), "\n") {
+		f := strings.Fields(line)
+		if len(f) == 2 && strings.TrimPrefix(f[1], "*") == name {
+			expected = f[0]
+		}
+	}
+	if len(expected) != 64 {
+		return nil, invalid("No valid SHA-256 checksum for this asset")
+	}
+	archive, err := downloadRelease(ctx, asset, 800<<20)
+	if err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256(archive)
+	if hex.EncodeToString(sum[:]) != expected {
+		return nil, invalid("Release checksum does not match; installation refused")
+	}
+	gz, err := gzip.NewReader(bytes.NewReader(archive))
+	if err != nil {
+		return nil, err
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	var executable []byte
+	for {
+		h, e := tr.Next()
+		if e == io.EOF {
+			break
+		}
+		if e != nil {
+			return nil, e
+		}
+		if h.Typeflag == tar.TypeReg && h.Name == "sift" {
+			executable, err = io.ReadAll(io.LimitReader(tr, 800<<20))
+			if err != nil {
+				return nil, err
+			}
+			break
+		}
+	}
+	if len(executable) == 0 {
+		return nil, invalid("Release does not contain sift")
+	}
+	release, err := s.beginMaintenance()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	if _, err = s.backupLocked(); err != nil {
+		return nil, fmt.Errorf("Pre-update backup failed: %w", err)
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	return installUpdate(ctx, exe, info.Latest, executable)
+}
+
+// The replacement transaction takes an explicit executable path so it can also
+// be verified on disposable package files without replacing the running test
+// process. ApplyUpdate alone chooses os.Executable after the safety backup.
+func installUpdate(ctx context.Context, exe, version string, executable []byte) (map[string]any, error) {
+	var err error
+	exe, err = filepath.EvalSymlinks(exe)
+	if err != nil {
+		return nil, err
+	}
+	f, err := os.CreateTemp(filepath.Dir(exe), ".sift-update-*")
+	if err != nil {
+		return nil, err
+	}
+	temp := f.Name()
+	f.Close()
+	defer os.Remove(temp)
+	if err = writeSync(temp, executable, 0700); err != nil {
+		return nil, err
+	}
+	if err = os.Chmod(temp, 0700); err != nil {
+		return nil, err
+	}
+	vctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	v, err := exec.CommandContext(vctx, temp, "version").Output()
+	if err != nil || strings.TrimSpace(string(v)) != strings.TrimPrefix(version, "v") {
+		os.Remove(temp)
+		return nil, invalid("Downloaded executable failed version validation")
+	}
+	if err = os.Rename(temp, exe); err != nil {
+		return nil, err
+	}
+	if err = syncDir(filepath.Dir(exe)); err != nil {
+		return nil, err
+	}
+	return map[string]any{"installed": version, "restartRequired": true}, nil
+}
+func (s *Service) Backup() (string, error) {
+	release, err := s.beginMaintenance()
+	if err != nil {
+		return "", err
+	}
+	defer release()
+	return s.backupLocked()
+}
+func (s *Store) SnapshotUnlocked() map[string]any {
+	out := map[string]any{"cursor": s.Latest(), "version": Version}
+	for _, k := range []string{"task", "column", "project", "tag", "job", "run", "attachment", "notification", "settings"} {
+		out[k+"s"] = s.ListRaw(k)
+	}
+	return out
+}
+func (s *Service) RestoreArchive(ctx context.Context, b []byte) error {
+	return s.restore(ctx, b)
+}
+func (s *Service) Setup(action string, overwrite bool) (map[string]any, error) {
+	home, _ := os.UserHomeDir()
+	exe, _ := os.Executable()
+	switch action {
+	case "skill":
+		dir := filepath.Join(home, ".agents", "skills", "sift")
+		dest := filepath.Join(dir, "SKILL.md")
+		old, e := os.ReadFile(dest)
+		if e == nil && string(old) != skillText && !overwrite {
+			return nil, conflict("An existing Sift skill differs; confirm replacement before installing")
+		}
+		if e = os.MkdirAll(dir, 0700); e != nil {
+			return nil, e
+		}
+		if e = os.WriteFile(dest, []byte(skillText), 0600); e != nil {
+			return nil, e
+		}
+		return map[string]any{"installed": true, "path": dest}, nil
+	case "cli":
+		dir := filepath.Join(home, ".local", "bin")
+		_ = os.MkdirAll(dir, 0755)
+		dest := filepath.Join(dir, "sift")
+		installed, installedErr := os.Stat(dest)
+		current, currentErr := os.Stat(exe)
+		if installedErr == nil && currentErr == nil && os.SameFile(installed, current) {
+			return map[string]any{"installed": true, "path": dest}, nil
+		}
+		if _, e := os.Lstat(dest); e == nil {
+			return nil, conflict("A file already exists at " + dest + "; inspect it before replacing")
+		}
+		if e := os.Symlink(exe, dest); e != nil {
+			return nil, e
+		}
+		return map[string]any{"installed": true, "path": dest, "note": "Ensure ~/.local/bin is on PATH; no shell files were changed"}, nil
+	case "startup":
+		var path, content string
+		address := s.Address
+		if address == "" {
+			address = "127.0.0.1:" + DefaultPort
+		}
+		if runtime.GOOS == "darwin" {
+			path = filepath.Join(home, "Library/LaunchAgents/space.akst.sift.plist")
+			esc := func(v string) string {
+				v = strings.ReplaceAll(v, "&", "&amp;")
+				v = strings.ReplaceAll(v, "<", "&lt;")
+				return strings.ReplaceAll(v, ">", "&gt;")
+			}
+			content = fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key><string>space.akst.sift</string><key>ProgramArguments</key><array><string>%s</string><string>serve</string><string>--data</string><string>%s</string><string>--address</string><string>%s</string></array><key>RunAtLoad</key><true/><key>KeepAlive</key><true/><key>StandardErrorPath</key><string>%s</string></dict></plist>`, esc(exe), esc(s.Dir), esc(address), esc(filepath.Join(s.Dir, "service.log")))
+		} else {
+			path = filepath.Join(home, ".config/systemd/user/sift.service")
+			quote := func(v string) string {
+				return `"` + strings.ReplaceAll(strings.ReplaceAll(v, `\`, `\\`), `"`, `\"`) + `"`
+			}
+			content = "[Unit]\nDescription=Sift local workspace\n[Service]\nExecStart=" + quote(exe) + " serve --data " + quote(s.Dir) + " --address " + quote(address) + "\nRestart=on-failure\n[Install]\nWantedBy=default.target\n"
+		}
+		if _, e := os.Stat(path); e == nil && !overwrite {
+			return nil, conflict("Startup configuration already exists; confirm replacement")
+		}
+		_ = os.MkdirAll(filepath.Dir(path), 0700)
+		if e := os.WriteFile(path, []byte(content), 0600); e != nil {
+			return nil, e
+		}
+		if runtime.GOOS == "linux" {
+			ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
+			defer cancel()
+			if b, e := exec.CommandContext(ctx, "systemctl", "--user", "enable", "sift.service").CombinedOutput(); e != nil {
+				return map[string]any{"path": path, "installed": false, "note": string(b), "command": "systemctl --user daemon-reload && systemctl --user enable sift.service"}, nil
+			}
+		}
+		return map[string]any{"installed": true, "path": path, "note": "Starts at the next login. Current service is unchanged."}, nil
+	}
+	return nil, invalid("Unknown setup action")
+}

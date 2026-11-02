@@ -1,0 +1,2 @@
+# Intentionally no default test/vendor ignores: all first-party source is scanned.
+# Explicit generated/dependency exclusions live in security-check.py and are checked.

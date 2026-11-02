@@ -1,0 +1,32 @@
+{
+  "catalog": [
+    {"id":"brand-slack","name":"Brand Slack","category":"Brand","aliases":["chat","team","workspace"],"symbol":"ti-brand-slack"},
+    {"id":"brand-gmail","name":"Brand Gmail","category":"Brand","aliases":["email","inbox","google"],"symbol":"ti-brand-gmail"},
+    {"id":"calendar","name":"Calendar","category":"Planning","aliases":["date","schedule","meeting"],"symbol":"ti-calendar"},
+    {"id":"calendar-filled","name":"Calendar Filled","category":"Planning","aliases":["date","schedule","filled"],"symbol":"ti-calendar-filled"},
+    {"id":"mail","name":"Mail","category":"Communication","aliases":["email","inbox","message"],"symbol":"ti-mail"},
+    {"id":"code","name":"Code","category":"Development","aliases":["engineering","programming"],"symbol":"ti-code"},
+    {"id":"circle-check","name":"Circle Check","category":"System","aliases":["todo","task","complete"],"symbol":"ti-circle-check"}
+  ],
+  "cases": [
+    {"query":"","ids":["brand-slack","brand-gmail","calendar","calendar-filled","mail","code","circle-check"]},
+    {"query":"   -- !!!  ","ids":["brand-slack","brand-gmail","calendar","calendar-filled","mail","code","circle-check"]},
+    {"query":"SLACK","ids":["brand-slack"]},
+    {"query":"slcak","ids":["brand-slack"]},
+    {"query":"slck","ids":["brand-slack"]},
+    {"query":"gmal","ids":["brand-gmail"]},
+    {"query":"gmial","ids":["brand-gmail","mail"]},
+    {"query":"gmail","ids":["brand-gmail","mail"]},
+    {"query":"calender","ids":["calendar","calendar-filled"]},
+    {"query":"calendar filled","ids":["calendar-filled"]},
+    {"query":"brand team","ids":["brand-slack"]},
+    {"query":"planning","ids":["calendar","calendar-filled"]},
+    {"query":"nbox","ids":["brand-gmail","mail"]},
+    {"query":"em","ids":["brand-gmail","mail","circle-check"]},
+    {"query":"qz","ids":[]},
+    {"query":"zzzzzzzzzz","ids":[]},
+    {"query":"工程 ⚡ Gmail","ids":["brand-gmail","mail"]},
+    {"query":"a-b","ids":["brand-slack","brand-gmail","mail"]},
+    {"query":"calendar calendar calendar calendar calendar calendar calendar calendar ignored","ids":["calendar","calendar-filled"]}
+  ]
+}

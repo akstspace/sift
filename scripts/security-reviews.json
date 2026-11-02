@@ -1,0 +1,334 @@
+{
+  "scripts/test-tooling.py:python.lang.security.audit.dangerous-subprocess-use-audit:80b68511c87433323a4dc2f61a05f546dcd7b1a992155482da217616cfec0c22": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Installer quoting regression executes only the enumerated absolute /bin/sh, /bin/bash, and optional /bin/zsh paths with generated PATH blocks in a disposable TemporaryDirectory. All directory names and PATH cases are fixed test fixtures, including intentional shell metacharacters whose non-execution is asserted. No network, user-provided command, ambient HOME, or real shell profile is used. Running the generated shell text is necessary to test quoting rather than merely compare strings."
+  },
+  "scripts/test-tooling.py:python.lang.security.audit.dangerous-subprocess-use-audit:8c2a6541a31259412a51437aa3d08239600c52b4555ddfb6c28c03d1c1782097": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Fresh-terminal regression selects only /bin/bash or /bin/zsh from a fixed literal list. Arguments, the command sift, and environment are fixed fixtures; HOME, ZDOTDIR, rcfile, and the executable all reside in the test's disposable directory. The executable only prints SIFT_PATH_OK, stdin is disabled, and no real user profiles or external inputs are read as commands."
+  },
+  "internal/sift/backup_io_test.go:go.lang.correctness.permissions.incorrect-default-permission:43be1324f84eb9a14cb624180622141a268c8b9f983b81551004953ba03b7ef3": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Creates only backup/session directories inside testService's disposable t.TempDir. Mode 0700 is owner-only and directory search permission is necessary to create/read entries; 0600 is not a usable directory permission. No personal workspace or group/other access is involved."
+  },
+  "internal/sift/backup_io_test.go:go.lang.correctness.permissions.incorrect-default-permission:438a8b3a75595c234841ba5b77537de515384263b1f3455905402376b0165458": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Cleanup restores owner-only read/write/search permission to the disposable backup directory after deliberately revoking writes/reads to exercise real export failures. It grants no group/other access and cannot target a user's directory."
+  },
+  "internal/sift/backup_io_test.go:go.lang.correctness.permissions.incorrect-default-permission:f1130e69da79e55fdaa37e4c197d1fd6829bb32ce3823ec760610cf2e5210dbd": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Cleanup restores owner-only search permission to this test's private sessions directory after a deliberate metadata-read denial. Directory traversal is required for safe temporary-file cleanup; group/other access remains zero."
+  },
+  "internal/sift/backup_io_test.go:go.lang.correctness.permissions.incorrect-default-permission:9ca0932c76f3cee45620f296e0e99505d61ac371820fcda0376384ccccd24662": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Restores 0700 on only the two exact disposable directories so assertions can read preserved evidence and explicitly retry backup. Owner search/write access is essential for that retry; no process-global configuration or personal data is affected."
+  },
+  "internal/sift/query_failure_test.go:go.lang.correctness.permissions.incorrect-default-permission:ff97e4844d662c49dfa5efc445f8daa0f8f25ae51397614d4f1dd34a587fba0f": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Cleanup restores owner-only write/search access on t.TempDir after a committed restore cleanup is deliberately denied. Search is required to remove the retry journal; no group/other access or real workspace is involved."
+  },
+  "internal/sift/query_failure_test.go:go.lang.correctness.permissions.incorrect-default-permission:362387e43230b1c2362053efc8df8444a9c5c5d2f0774dfa9a20a758336e4d3d": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Restores owner-only directory write/search access to explicitly retry cleanup after committed restore. The disposable workspace remains inaccessible to group/other users; the test verifies the committed records/session and eventual journal removal."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:2815ef006fefc0299e651bd70f20eb8c31ead446eb819c25849723b212343b3a": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Creates the owner-only original-session directory in a disposable recovery fixture. Directory search permission is required to verify that a failed rename preserves memory; no group/other access is granted."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:ff97e4844d662c49dfa5efc445f8daa0f8f25ae51397614d4f1dd34a587fba0f": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Cleanup restores owner-only write/search permissions on t.TempDir after deliberately denying a recovery rename. It touches only the disposable workspace and adds no group/other access."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:fa0ccfe7ed98646f0fedc0c6d3a5dadab89c646d7d152e23121f1de4bf86cc05": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Restores owner-only directory access so the test can explicitly retry recovery after a refused rename. The target is t.TempDir and remains inaccessible to group/other users."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:c057f90c8651fb53ab476609a1a0a20b09605542ecbf524e103e858c06ea2aa6": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Cleanup restores owner-only access to the disposable staged-session directory after testing removal failure. Directory search is necessary for cleanup, and no deployed workspace is used."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:fdcfd2cd049aefe5c7f334e9bff588d5d3860986405b0bd834083d7196641401": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Restores owner write/search access to a temporary session directory for explicit recovery retry. The test verifies the retry removes uncommitted bytes and its journal; group/other permissions remain zero."
+  },
+  "internal/sift/query_failure_test.go:go.lang.correctness.permissions.incorrect-default-permission:29b4b0e9868c0fe494d0f7e26b67543fabc78d93147386f44cddc0b473242230": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Creates an owner-only session directory inside t.TempDir for SQLite transaction-refusal/rollback tests. Directory search is required to verify the original and restored memory; no group/other access is granted."
+  },
+  "internal/sift/io_failure_test.go:go.lang.correctness.permissions.incorrect-default-permission:857cadced4aae34030d9664409049e88f5b60cc1bf8138ad22be73af0ee58d96": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "An owner-only directory replaces a parsed multipart temporary spool file to exercise a real read failure in the image route. It is confined to t.TempDir; directory search permission is required, and no group/other access is granted."
+  },
+  "internal/sift/update_coverage_test.go:go.lang.correctness.permissions.incorrect-default-permission:3aceabd2ee159273bf5bf9d59293550dffbc9e87eb461457e7cd96c4c294c64c": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Cleanup restores owner-only directory traversal on t.TempDir after deliberately denying updater staging writes. No public execute/read permissions or real installation paths are affected."
+  },
+  "internal/sift/update_coverage_test.go:go.lang.correctness.permissions.incorrect-default-permission:dd267dd7df4cc261a08a9faf81089d8982e2b0ab7cf193c5b6ca32b09fd94f06": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Creates an owner-only directory at the disposable executable pathname to prove rename-over-directory is refused. This malformed test fixture requires owner search; it is not a deployed data file."
+  },
+  "cmd/sift/main_test.go:go.lang.security.audit.dangerous-exec-command:2664d04a1815de8af01e7adf304bb539d9de49573897609d322b99ca7535dc10": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Test-only child runs this Go test executable with a fixed test selector to verify main's exit status. No shell, HTTP input, or external executable is selected."
+  },
+  "internal/sift/archive_paths_test.go:go.lang.correctness.permissions.incorrect-default-permission:25b17353a8b4448fbd974a98bc59852241dc07ca30b0aa10d0ee99d472705a3a": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Creates a session fixture directory under t.TempDir. Directory traversal requires owner execute; 0700 grants no group/other access. 0600 would make the fixture unusable."
+  },
+  "internal/sift/archive_paths_test.go:go.lang.security.audit.database.string-formatted-query:3689e18b8039b5bce6961c2d24f0fa9aed77adc0be9d7b255c5c64059d9939da": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Test-only trigger DDL interpolates table names from the literal requests/run_logs/metadata case list in an isolated fixture database. No user or restored value supplies the SQL identifier."
+  },
+  "internal/sift/backup.go:go.lang.correctness.permissions.incorrect-default-permission:017eb8be54269f428d38121c838194548b69daa8f539d1ac6afcc758d384c72e": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Private backups directory requires owner search/execute to create/read archives. Mode 0700 excludes all other users; archive files themselves are opened 0600."
+  },
+  "internal/sift/backup.go:go.lang.correctness.permissions.incorrect-default-permission:d6383d0a4f696e8a14af13fffb7146a655e6b248f94c272b28aecf4210d158c3": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Unique restore staging directory is private 0700 and removed on failure. Owner execute is necessary for staging session files; no group/other permissions are present."
+  },
+  "internal/sift/backup.go:go.lang.correctness.permissions.incorrect-default-permission:86f9f9a88a8e7f3a7ccfce2ace2cf9c3cbb0a394e7f77e4b640bb5d7459d1526": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Nested restore directories use owner-only 0700 inside the unique staging root. Archive paths have already passed readArchive traversal checks. Session file contents are written 0600."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:6817c9010d967f1a7f60eba01d04e37db05df78e21f0badc213d8af740d7fd36": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Repeated session root fixtures in t.TempDir need owner traversal. Each exact matching call creates 0700 directories, not executable public data files."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:29b4b0e9868c0fe494d0f7e26b67543fabc78d93147386f44cddc0b473242230": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Session fixture root creation is confined to a temporary service directory. Mode 0700 supplies required directory search and no permissions to other users."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:598ad510cfb2884d53752bea0a4d7c99c9e52105f1e38095da0b2fd2151e7f0d": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Temporary sessions root used to exercise recovery failure is a directory. 0700 is the restrictive traversable owner-only mode."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:ccd0b58a35d3416e6a4371f2a227675cf248c898fc44d102a9b3c3194eea20d8": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Creates the test's restore stage under the temporary service workspace. Owner search permission is required; group/other access is zero."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:aa2bd1d0658346c3c7716d628b5c253e36d8ef47dc618bd2bbad41ba659a2a53": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Deliberately creates restore.json as an owner-only directory to test journal read failure. It is not a journal file or production permission choice."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:46514d777a7675f32d94f955db7a8f0b24ca39c63fc6cae545076d573aaf0dc1": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Backups fixture directory in t.TempDir uses 0700 before permission-failure manipulation. Owner execute is required to create entries; no other access is granted."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:c35eeedf652dc32fcdf2710ec6461f9c3a003c394770b6398c38da8d241af5a1": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Cleanup restores a temporary backup directory from deliberately restrictive failure-test permissions to owner-only 0700 so t.TempDir can clean it."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:02f7025f6e03183ec2f5f02331c88ad0d8d21b8f26086403fb4432227a5dfc57": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Session root setup for filesystem-failure tests requires owner execute and is private to a temporary workspace. Mode 0700 is appropriate for a directory."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:49e1974fb93ca22a408380a56798e31d06a4017a962f68334203e243c36e5ab1": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Recovery old-session directory fixture uses owner-only 0700 to permit rename/read during rollback tests. No real workspace or other-user permission is involved."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:47b543152a0d270d4086b23c8d948fe29de64566ee6d83ef5ddf1b42d5bb7b12": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Test cleanup restores its temporary service root's owner traversal after chmod-induced failures. 0700 is restrictive and necessary for safe cleanup."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:c30f14519ac8ab2e31bbdfbb34f78c096f64430c8b92496f0d16b6ba19e34f4a": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Creates an owner-only directory at the journal pathname to force a write refusal in an isolated restore test. This is intentional malformed filesystem input."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:4760b5e1d7a1f0f8ecb016674232c8a0b1ae5f4e335fbd99717c40dc1e6f6927": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Recovery test cleanup repairs the temporary sessions directory to owner-only searchable 0700. It does not broaden permissions beyond its owner."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:7f68ce66ee95a730d009dc23ef81e332cda77ad5211c79b5d41f1549e9b9b612": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Stage directory fixture for recovery failure is under t.TempDir and requires owner traversal. It is not a regular file needing 0600."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:6089a0c8c45ef3d20fa8db4f7a646ee7cb440a01b594862537fe7a2a61ed734a": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Cleanup resets the temporary restore stage's permissions after a deliberate access failure. Owner-only 0700 allows removing its children without exposing them."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:aefe145b62522b20704b0ec3e5c369b84c64b4eef26be3863941d5a1eb8257d0": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "The test's explicit cleanup loop restores owner access on known temporary directory paths only; missing paths are tolerated. No deployed files are chmodded."
+  },
+  "internal/sift/backup_test.go:go.lang.correctness.permissions.incorrect-default-permission:ac211c415572ba56de0ab629e1d46fdaa787ff7dbf1381db83597a485e4f722a": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Temporary nested session directories need execute/search for owner access. 0700 excludes group/other; session data files are separately private."
+  },
+  "internal/sift/backup_test.go:go.lang.correctness.permissions.incorrect-default-permission:25b17353a8b4448fbd974a98bc59852241dc07ca30b0aa10d0ee99d472705a3a": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Creates a temporary session root for crash-recovery fixtures. Owner-only directory mode 0700 is necessary for subsequent file operations."
+  },
+  "internal/sift/backup_test.go:go.lang.correctness.permissions.incorrect-default-permission:29ae654a278bd3f62123a19fc3f9b0e76c394315752fe6c06fff957470d9ca75": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Old session tree fixture in t.TempDir is a directory requiring owner search permission. Mode 0700 has no public access."
+  },
+  "internal/sift/http.go:go.lang.correctness.permissions.incorrect-default-permission:017eb8be54269f428d38121c838194548b69daa8f539d1ac6afcc758d384c72e": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Workspace directory is owner-only 0700 to allow the local service to traverse it. Connection tokens and data files use 0600; removing directory execute would prevent operation."
+  },
+  "internal/sift/http.go:go.lang.security.audit.net.cookie-missing-secure:cedbb817e6dc3b45815a7f7169a7cc5c7692c5f19e46c775e3d7a3001aeb7e7d": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Intentional HTTP-only loopback service binds exclusively 127.0.0.1 and rejects foreign Host, Origin and cross-site requests. Secure would break the supported 127.0.0.1 HTTP session. Cookie is HttpOnly/SameSiteStrict; writes additionally require X-Sift-Request. Re-review if non-loopback or TLS serving is added."
+  },
+  "internal/sift/http.go:go.lang.security.audit.dangerous-exec-command:0f34817650ee0c99860ed2e93b311b98693f623e40bc921828a3858e3018d640": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Explicit authenticated Pi update endpoint executes the locally configured Pi path with the single literal update argument and a five-minute deadline. No shell or request-supplied executable/argv; maintenance prevents concurrent runs. It is never called automatically."
+  },
+  "internal/sift/http.go:go.lang.security.audit.xss.no-direct-write-to-responsewriter:4b103ecce18093ef1b91820809e0dee445bf62b1f203e435c20e55be9a652937": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Authenticated image endpoint writes locally uploaded bytes with allowlisted PNG/JPEG/GIF/WebP MIME (fallback octet-stream), nosniff and cache headers. inspectImage rejects SVG/HTML and validates raster dimensions; no remote import or HTML response is produced."
+  },
+  "internal/sift/http.go:go.lang.security.audit.xss.no-fprintf-to-responsewriter:77b3bfc83afc1cf69b131f7de79d53d56cbce912f77776a8edcb86250542fd77": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Authenticated SSE stream has text/event-stream content type, integer event IDs and encoding/json data. JSON escapes HTML and embedded newlines; the client parses JSON rather than injecting HTML. This formatted write is SSE framing, not an HTML sink."
+  },
+  "internal/sift/lifecycle_test.go:go.lang.correctness.permissions.incorrect-default-permission:e00e64deb7ac10e44bfa500dbdb6623a86c7769d738c62d8ea3c421f06e47d90": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "An owner-only directory deliberately occupies connection.json in t.TempDir to force startup failure. This is malformed filesystem test input, not an insecure file permission."
+  },
+  "internal/sift/pi.go:go.lang.security.audit.dangerous-exec-command:c58d1a50269b794044ff4646761339fdd22143e98c232a2912f1b9c1cc539ce0": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Runs the user's local Pi (explicit SIFT_PI/PATH/home discovery) directly with --mode rpc and caller-constructed argv. Task prompts travel as JSON over stdin, not command text; no shell is used. Selecting a different executable requires local configuration control."
+  },
+  "internal/sift/pi.go:go.lang.security.audit.dangerous-exec-command:69a3bf2faa7bd1ade6b26a8f5058fb48d61661d6c7703ac6a35dc0447048677c": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Discovery reads the locally selected Pi's version using a literal --version argument and bounded context. No request value becomes executable or shell input."
+  },
+  "internal/sift/pi_paths_test.go:go.lang.correctness.permissions.incorrect-default-permission:347adeef6e39d9e3793278f1719ae5368bc3dcc87b797a9406f1d42fa2729512": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Temporary HOME bin directories require owner search for Pi path-discovery fixtures. 0700 is private; no actual Pi installation/configuration is changed."
+  },
+  "internal/sift/remaining_paths_test.go:go.lang.security.audit.sqli.gosql-sqli:9c80490b89fca5c14f65dc8fd8de5c48cc9cea5269d3e3a05e164df068b86c06": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Isolated schema-conflict tests concatenate DDL from a closed literal statement list to construct invalid legacy databases. No user, network, or archive input is interpolated."
+  },
+  "internal/sift/service_paths_test.go:go.lang.correctness.permissions.incorrect-default-permission:627d43a2f97f3ca636a776b8442c4473c5a51b0a4cd54b83401fc707f85ae18b": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Creates a private temporary skill directory for setup failure tests. Directory search needs owner execute; group/other access remains zero."
+  },
+  "internal/sift/service_paths_test.go:go.lang.correctness.permissions.incorrect-default-permission:713e53449fd2b601ddf0af7ff8df88ffc2080aa5874db10273f3050f7dcc8ad3": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "A directory is deliberately placed at SKILL.md in the temporary HOME to verify setup refuses a write error. It is not a production skill file mode."
+  },
+  "internal/sift/service_paths_test.go:go.lang.security.audit.database.string-formatted-query:abfd28e05a9dd64edfb981b99577df545b91dae2637e0eba458d27269f846b7b": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Atomicity fixture interpolates a task/entity ID generated by the test into trigger DDL. IDs are internal random identifiers or fixed fixture values, never user text; only an isolated database is affected."
+  },
+  "internal/sift/service_paths_test.go:go.lang.security.audit.database.string-formatted-query:cbab83ce55e401b57391931f25f3a92fca1676a59457fb5f7581810cf6cbeb8f": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Run-start failure trigger interpolates kind from the literal run/job fixture list. The DDL is test-only and cannot receive application/user values."
+  },
+  "internal/sift/service_paths_test.go:go.lang.correctness.permissions.incorrect-default-permission:db9a88324167f4927595a77798d06eadb253c7b5618e8ddf24acf86d3a81410c": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Creates a directory at the expected RustFS executable path inside a temporary workspace to induce rename failure. Mode 0700 is appropriate for this malformed directory fixture."
+  },
+  "internal/sift/service_paths_test.go:go.lang.correctness.permissions.incorrect-default-permission:8300c322632d6e5eb392aeb581547401db36c774775a227450fc759ab6994a54": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Temporary filesystem obstruction directory tests storage-start errors. 0700 grants only owner traversal; it does not expose workspace data."
+  },
+  "internal/sift/storage.go:go.lang.correctness.permissions.incorrect-default-permission:dcc726d4b73ceb3b0bc2017392df67bfbd0ed50290d7a5f24f3de6b8d48ddad5": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Bundled runtime cache is a private directory; 0700 owner search is required to launch the embedded RustFS executable. No group/other access is granted."
+  },
+  "internal/sift/storage.go:go.lang.correctness.permissions.incorrect-default-permission:2f9b848708a8f20836dc25fbe77b8a5cb94cd185e0f9f32cce0f60703eb390ef": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Private RustFS object directory must be traversable by its owner. 0700 is the least useful directory permission; 0600 would prevent storage access."
+  },
+  "internal/sift/storage.go:go.lang.security.audit.dangerous-exec-command:ca1cd08b2a52cbe6ed6d22a21cf25d47e24af7ec0b331de82efbf4b11da1ef7d": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Launches target-specific embedded RustFS after hash comparison, or an explicit local SIFT_RUSTFS override. Executable/argv are not request-controlled; arguments specify server, a loopback endpoint and a workspace object path. No shell expansion."
+  },
+  "internal/sift/store.go:go.lang.correctness.permissions.incorrect-default-permission:017eb8be54269f428d38121c838194548b69daa8f539d1ac6afcc758d384c72e": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Creates the SQLite workspace as an owner-only searchable directory. Database access requires directory execute; the following chmod also tightens an existing directory to 0700."
+  },
+  "internal/sift/store.go:go.lang.correctness.permissions.incorrect-default-permission:0a21b2e5189396a34e783f805ca40a3787df831e0ee03a769e45dce5554b7515": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Tightens the selected data directory to owner-only read/write/search. Execute means directory traversal here, not execution of data files; no group/other permission remains."
+  },
+  "internal/sift/store_safety_test.go:go.lang.security.audit.database.string-formatted-query:46360890184be99b59f839868ea90cc67f295518fe9d7fa3c197805df6a15258": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Failure-injection trigger table name comes from the test's closed literal objects/events list. Only a temporary database is modified; application queries continue to bind data parameters."
+  },
+  "internal/sift/store_safety_test.go:go.lang.security.audit.database.string-formatted-query:832154c40b6ffae47459ab519a9a5557a16dd81a89973104b2b1da006ed7f779": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Test-only parent event trigger interpolates the internally generated parent task ID (fixed-format random identifier), not a title or user field. It tests transaction rollback in a temporary store."
+  },
+  "internal/sift/system.go:go.lang.correctness.permissions.incorrect-default-permission:c43fdb25ce46227fcb201cc8afff256decc3041043737cca26888d60e4fd081d": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "The checksum-verified replacement is an executable, not a data file. Owner-only 0700 is required for its version check and later launch; no group/other access is granted."
+  },
+  "internal/sift/system.go:go.lang.security.audit.dangerous-exec-command:1a59f663b6d09fa4f37423f3219b98e7047786bd4c613717fa8cd0a33c5f90b9": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Explicit updater runs only the uniquely-created local temporary executable extracted after official release SHA-256 verification, using the literal version argument and ten-second deadline. It is required version validation, not request-supplied command execution. Redirects are restricted to GitHub HTTPS hosts before following."
+  },
+  "internal/sift/system.go:go.lang.correctness.permissions.incorrect-default-permission:433226aea7d671d2762ee7b7dfdf6b696363283fe21566facbf9f7a060d96f73": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Opt-in shared skill directory is private 0700 so its owner can traverse it; SKILL.md itself is 0600. Execute is appropriate on this directory."
+  },
+  "internal/sift/system.go:go.lang.correctness.permissions.incorrect-default-permission:f232dfa025b7b33f72fc25a9495a43f1291ea89cc49b7f780353c7099df7f771": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Opt-in ~/.local/bin is a conventional searchable public executable directory (0755); no secrets or workspace data are written there, only a symlink. The code refuses to replace unrelated files."
+  },
+  "internal/sift/system.go:go.lang.correctness.permissions.incorrect-default-permission:808e9cf83b6e44c14e5692d941a08c647eef20bad8dd3a9ab30761ea4ebb0909": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Opt-in startup configuration's parent directory requires owner search. 0700 excludes other users, and the plist/unit is separately written 0600."
+  },
+  "internal/sift/update_coverage_test.go:go.lang.security.audit.dangerous-exec-command:6a66bffa86f2d14e193c9ea130e91a05d92db167d39788dc0600ad5b3253c71b": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Runs a disposable copy of the current Go test executable with a fixed test selector to validate self-replacement safely. Copy path is created inside t.TempDir; no developer executable is replaced."
+  },
+  "internal/sift/update_coverage_test.go:go.lang.security.audit.dangerous-exec-command:bbc81c917ba397a4b68df36516c8ef3f66f48880aac013bee78e4f2e401eccbb": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Checks the disposable replacement fixture's fixed version output. The executed shell fixture is authored in this test and confined to t.TempDir; there is no remote download or shell command construction."
+  },
+  "scripts/collect-licenses.py:python.lang.security.audit.dynamic-urllib-use-detected:f87d548700cddbdf9d57934b84678720c841aa48f83dc691921e9f868d88a243": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "URL is the adjacent hardcoded HTTPS raw.githubusercontent.com/rustfs/rustfs/1.0.4/LICENSE literal. Response is preserved as license text only, never executed; no input controls scheme/host."
+  },
+  "scripts/collect-licenses.py:python.lang.security.audit.dynamic-urllib-use-detected:c27bd753a6645a072b49e2461fff0845418b9f655677359ead44f3c18eeb27c2": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Fetches one hardcoded official shadcn HTTPS license as text for notices. No variable/untrusted URL, credentials or executable content is involved."
+  },
+  "scripts/prepare-rustfs.py:python.lang.security.audit.dynamic-urllib-use-detected:f552cedb64427b20ab1fdf8c28867ff3308f30fff2d119d8b8af42640b006f38": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "URL is constructed under hardcoded github.com/rustfs/rustfs/releases/download from the checked-in lock. Download size is bounded and exact locked SHA-256 is checked before extracting the binary. No application/user URL can select a resource."
+  },
+  "scripts/publish-release.py:python.lang.security.audit.dangerous-subprocess-use-audit:a137165e0d94d140d108402dafe8a5e22751a496bebe915cb70de20f7297c223": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Release helper executes only source-authored python3/git/gh argv lists; no shell. Publication requires official workflow_dispatch/main, token, exact version changes, unmoved HEAD/main and absent tag. Version is validated by version.py. Hermetic tests verify guards and prevent unverified draft publication."
+  },
+  "scripts/release-check.py:python.lang.security.audit.dangerous-subprocess-use-audit:1d6817a2ee685acf22801a52534fa54e7feae77a3b80d95a1e90419427f3e615": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Explicit --native verifier runs only the executable extracted from the checksum-verified local package in a temporary directory, with literal version argv. This is intentional package smoke execution without a shell."
+  },
+  "scripts/release-check.py:python.lang.security.audit.dangerous-subprocess-use-audit:ceb33300daed358220a4627699816adda6d9ee65fd7452148e5b88022c7250d1": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Native smoke starts the verified extracted executable with an isolated temporary workspace and ephemeral loopback port. Argv is literal, no personal data, shell or real model prompts."
+  },
+  "scripts/release-check.py:python.lang.security.audit.dangerous-subprocess-use-audit:f8385ccf9cfb112b610a7a5fba48668ab4af05f41aa9d285854c9c477cf90772": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "CLI smoke helper runs the checksum-verified extracted package with internally authored test argv and a disposable --data path, bounded to 30 seconds. It never calls a shell."
+  },
+  "scripts/release-check.py:python.lang.security.audit.dangerous-subprocess-use-tainted-env-args:f8385ccf9cfb112b610a7a5fba48668ab4af05f41aa9d285854c9c477cf90772": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Arguments are fixed smoke scenarios in this script, not environment-derived application input. The executable path refers only to the verified archive extraction; separate argv prevents shell injection."
+  },
+  "scripts/security-check.py:python.lang.security.audit.dangerous-subprocess-use-audit:59612dabf687b2116be1f348a048f854b0ff092113cbbc83d65a629d5ae398f9": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Scanner wrapper receives only source-authored argv for project-local checksum-pinned OpenGrep/Trivy tools with enumerated files. No shell, external request or dynamic executable is accepted. Nonzero completion and report completeness are checked."
+  },
+  "scripts/security-tools.py:python.lang.security.audit.dynamic-urllib-use-detected:3a86690af848311afe63b2b77a93adfa612e63f8156805aa3276b549bc7fafc5": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Scanner/rule URLs and SHA-256 values come exclusively from the checked-in lock. Bounded downloads must match their pinned digest before extraction/use; no app/user URL is accepted and no global install occurs."
+  },
+  "scripts/test-tooling.py:python.lang.security.audit.exec-detected:5f8bf70529e0da90941b5f6d415951dcbf7fde00132fc6897ff437293f184f68": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Hermetic test loads the checked-in install.sh Python heredoc using compile/exec in a namespace with a non-main __name__. No downloaded/user text is evaluated and installer main is not invoked; tests mock network and use disposable paths."
+  },
+  "scripts/test-tooling.py:python.lang.security.audit.exec-detected:0b187e51088714a7cee68e1510ee844df6303633e4df13dceb6e79009e279e94": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Hermetic notice tests compile only the two named FunctionDef nodes from the checked-in scripts/collect-licenses.py AST. The module's top-level network, subprocess and notice-writing steps are not executed. Selected functions receive disposable fixture paths and in-source test inventories; no HTTP, environment, model or caller-supplied source is evaluated. Running a modified test script already requires local code-execution trust."
+  }
+}

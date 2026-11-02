@@ -1,0 +1,35 @@
+{
+  "opengrep": {
+    "version": "1.33.1",
+    "repository": "opengrep/opengrep",
+    "platforms": {
+      "darwin-arm64": ["opengrep_osx_arm64", "a17c1881bb40e3214266a7a291cf4f2ae3bc56c1715628b5712d2ec816bc3e2d"],
+      "linux-amd64": ["opengrep_manylinux_x86", "46e8133cc490f9f50518061590ce2f6be5a08afaeda034471c0ceda4b3899808"],
+      "linux-arm64": ["opengrep_manylinux_aarch64", "d1433f63a90b8bc0b6ad4b498a13b372b856ce9a754a43484ba4920fe2d76dcf"]
+    }
+  },
+  "trivy": {
+    "version": "0.76.1",
+    "repository": "aquasecurity/trivy",
+    "platforms": {
+      "darwin-arm64": ["trivy_0.76.1_macOS-ARM64.tar.gz", "11a9b6cd2752011b54f01ea4bd0dbfa9f0c41dc6538d5a3f9d23955f471bf4e5"],
+      "linux-amd64": ["trivy_0.76.1_Linux-64bit.tar.gz", "c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0"],
+      "linux-arm64": ["trivy_0.76.1_Linux-ARM64.tar.gz", "e174dff2a6dba5e3ae41f8d0537a6324405bd08132497340304c6b20e0f16a1f"]
+    }
+  },
+  "actionlint": {
+    "version": "1.7.12",
+    "repository": "rhysd/actionlint",
+    "platforms": {
+      "darwin-arm64": ["actionlint_1.7.12_darwin_arm64.tar.gz", "aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f"],
+      "linux-amd64": ["actionlint_1.7.12_linux_amd64.tar.gz", "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"],
+      "linux-arm64": ["actionlint_1.7.12_linux_arm64.tar.gz", "325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6"]
+    }
+  },
+  "rules": {
+    "repository": "opengrep/opengrep-rules",
+    "revision": "f1d2b562b414783763fd02a6ed2736eaed622efa",
+    "sha256": "495c43fbb69a2831e0d55ce0494b87fe840a05ab022c5513c63c063d7beb25f4",
+    "languages": ["go", "javascript", "typescript", "python", "bash", "yaml", "generic", "json", "html"]
+  }
+}
