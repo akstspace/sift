@@ -1,9 +1,10 @@
 import { Input } from "./components/ui/input";
 import { Choice } from "./components/Choice";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
 import {
   IconArchive as Archive,
+  IconArrowLeft as ArrowLeft,
   IconBell as Bell,
   IconCheck as Check,
   IconChevronRight as ChevronRight,
@@ -50,17 +51,21 @@ import { TaskBoard } from "./components/TaskBoard";
 // Opening a task is the workspace's primary interaction. Its sheet must be
 // ready with the board, not replaced by a second panel after a lazy import.
 import { TaskDetail } from "./components/TaskDetail";
-const Jobs = lazy(() => import("./components/Jobs").then(m => ({ default: m.Jobs })));
-const Runs = lazy(() => import("./components/Jobs").then(m => ({ default: m.Runs })));
-const Settings = lazy(() => import("./components/Settings").then(m => ({ default: m.Settings })));
-const Organization = lazy(() => import("./components/Organization").then(m => ({ default: m.Organization })));
+import { DoneReasonDialog } from "./components/DoneReasonDialog";
+import { PresenceFrame } from "./components/PresenceFrame";
+import { UpdateNotice } from "./components/UpdateNotice";
+import { preloadable } from "./lib/preloadable";
+const Jobs = preloadable(() => import("./components/Jobs").then(m => m.Jobs));
+const Runs = preloadable(() => import("./components/Jobs").then(m => m.Runs));
+const Settings = preloadable(() => import("./components/Settings").then(m => m.Settings));
+const Organization = preloadable(() => import("./components/Organization").then(m => m.Organization));
 import { AppSidebar } from "./components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "./components/ui/sidebar";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "./components/ui/breadcrumb";
 import { Separator } from "./components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "./components/ui/toggle-group";
 import { DraftGuardProvider, useDraftGuard } from "./components/DraftGuard";
-import { pageMotion, pageOrder } from "./motion";
+import { pageDirection, pageMotion, projectTitleId, settle, titleMorph, type PageDirection } from "./motion";
 import { ConnectionMonitor, type ConnectionState } from "./connection";
 import { useInertBackground } from "./hooks/useInertBackground";
 
@@ -76,6 +81,7 @@ function Workspace() {
     [catalog, setCatalog] = useState<CatalogIcon[]>([]),
     [page, setPage] = useState("today"),
     [project, setProject] = useState(""),
+    [projectView, setProjectView] = useState("board"),
     [query, setQuery] = useState(""),
     [priority, setPriority] = useState(""),
     [tag, setTag] = useState(""),
@@ -83,6 +89,7 @@ function Workspace() {
     [status, setStatus] = useState(""),
     [filters, setFilters] = useState(false),
     [selected, setSelected] = useState<Task | null>(null),
+    [completing, setCompleting] = useState<Task | null>(null),
     [connection, setConnection] = useState<ConnectionState>("connecting"),
     [connectionAttempt, setConnectionAttempt] = useState(0),
     [loadError, setLoadError] = useState(""),
@@ -102,12 +109,15 @@ function Workspace() {
     snapshotRef = useRef(snapshot),
     seenNotifications = useRef(new Set<string>());
   const routeKey = project ? `project:${project}` : page;
-  const previousRoute = useRef({ key: routeKey, page });
-  const direction = useRef(1);
+  const previousRoute = useRef({ key: routeKey, page, project });
+  const direction = useRef<PageDirection>({ sign: 1, depth: false });
   if (previousRoute.current.key !== routeKey) {
-    direction.current = pageOrder.indexOf(page) < pageOrder.indexOf(previousRoute.current.page) ? -1 : 1;
-    previousRoute.current = { key: routeKey, page };
+    direction.current = pageDirection(previousRoute.current, { page, project });
+    previousRoute.current = { key: routeKey, page, project };
   }
+  // The arriving page starts at the top before it paints; the leaving page is
+  // already lifted out of flow, so resetting scroll never jumps visible content.
+  useLayoutEffect(() => { document.getElementById("main")?.scrollTo({ top: 0 }); }, [routeKey]);
   snapshotRef.current = snapshot;
   const refresh = useCallback(async () => {
     if (refreshRunning.current) return;
@@ -123,6 +133,14 @@ function Workspace() {
       refreshRunning.current = false;
     }
   }, []);
+  const onboarded = !!snapshot?.settings.onboarded;
+  useEffect(() => {
+    if (!onboarded) return;
+    // Warm the other destinations while the workspace is idle, so a first visit
+    // swaps pages in one motion instead of flashing a loading state.
+    const timer = setTimeout(() => { for (const view of [Organization, Jobs, Runs, Settings]) view.preload().catch(() => {}); }, 400);
+    return () => clearTimeout(timer);
+  }, [onboarded]);
   useEffect(() => {
     refresh();
     api<CatalogIcon[]>("/icons")
@@ -208,12 +226,14 @@ function Workspace() {
   const navigate = (value: string, projectId = "") => guard(() => {
     setPage(value);
     setProject(projectId);
+    if (projectId) setProjectView("board");
     setQuery("");
     setSelected(null);
     setPriority("");
     setTag("");
     setDue("");
     setStatus("");
+    setFilters(false);
   });
   const saveSettings = async (settings: SettingsType) => {
     await api("/settings", "PUT", settings);
@@ -233,14 +253,8 @@ function Workspace() {
     await refresh();
     return result.task;
   };
-  const changeTask = async (task: Task) => {
-    try {
-      const saved = await saveTask(
-        task,
-        task.status === "done"
-          ? "Marked complete in workspace"
-          : "Updated in workspace",
-      );
+  const applyTaskChange = async (task: Task, reason = "Updated in workspace") => {
+      const saved = await saveTask(task, reason);
       toast.success(
         task.status === "done" ? "Task completed" : "Task updated",
         {
@@ -262,9 +276,14 @@ function Workspace() {
           },
         },
       );
-    } catch (e) {
-      toast.error((e as Error).message);
+  };
+  const changeTask = async (task: Task) => {
+    if (task.status === "done" && snapshotRef.current?.tasks.find(t => t.id === task.id)?.status !== "done") {
+      setCompleting(task);
+      return;
     }
+    try { await applyTaskChange(task); }
+    catch (e) { toast.error((e as Error).message); }
   };
   const openTask = (task: Task) => guard(() => setSelected(task));
   const addTask = (taskStatus = "open", parent = "") => guard(() => {
@@ -402,6 +421,7 @@ function Workspace() {
       </MotionConfig>
     );
   const boardPage = ["today", "backlog", "trash", "archive"].includes(page);
+  const taskView = project ? projectView : snapshot.settings.view;
   const title = project
     ? snapshot.projects.find((p) => p.id === project)?.name || "Project"
     : page === "today"
@@ -424,7 +444,7 @@ function Workspace() {
       icon: Archive,
       count: activeTasks.filter((t) => t.status !== "done").length,
     },
-    { id: "organization", label: "Projects & tags", icon: Folder },
+    { id: "organization", label: "Projects", icon: Folder },
     {
       id: "jobs",
       label: "Agents",
@@ -443,12 +463,13 @@ function Workspace() {
           <a className="skip-link" href="#main">
             Skip to main content
           </a>
-          <AppSidebar page={page} project={project} projects={snapshot.projects} counts={{today: todayTasks.filter(t => t.status !== "done").length, backlog: activeTasks.filter(t => t.status !== "done").length, jobs: activeRuns.length || undefined}} version={snapshot.version} navigate={navigate} openProject={id => navigate("backlog", id)} addTask={() => addTask()} showHelp={() => setHelp(true)} />
+          <AppSidebar page={page} project={project} counts={{today: todayTasks.filter(t => t.status !== "done").length, backlog: activeTasks.filter(t => t.status !== "done").length, jobs: activeRuns.length || undefined}} version={snapshot.version} navigate={navigate} addTask={() => addTask()} showHelp={() => setHelp(true)} />
           <div className="workspace">
             <header className="topbar">
               <SidebarTrigger />
               <Separator orientation="vertical" className="topbar-separator" />
               <Breadcrumb className="sift-breadcrumb"><BreadcrumbList><BreadcrumbItem className="breadcrumb-workspace">Workspace</BreadcrumbItem><BreadcrumbSeparator className="breadcrumb-workspace" /><BreadcrumbItem><BreadcrumbPage>{boardPage ? title : navItems.find(v => v.id === page)?.label || "Settings"}</BreadcrumbPage></BreadcrumbItem></BreadcrumbList></Breadcrumb>
+              <UpdateNotice version={snapshot.version} runningAgents={activeRuns.length} />
               <div className="global-search">
                 <Search size={16} />
                 <Input
@@ -510,9 +531,9 @@ function Workspace() {
                 </Button>
               </div>
             )}
-            <main id="main" className="main-content" tabIndex={0}>
-              <Suspense fallback={<div className="page-body"><Busy label="Opening view" /></div>}><AnimatePresence mode="wait" initial={false} custom={direction.current}>
-                <motion.div
+            <main id="main" className={"main-content" + (page === "runs" ? " runs-content" : "")} tabIndex={0}>
+              <AnimatePresence mode="popLayout" initial={false} custom={direction.current}>
+                <PresenceFrame
                   key={routeKey}
                   custom={direction.current}
                   className="page-transition"
@@ -520,14 +541,15 @@ function Workspace() {
                   initial="enter"
                   animate="visible"
                   exit="exit"
-                  onAnimationComplete={() => { document.getElementById("main")?.scrollTo({ top: 0 }); }}
                 >
+                  <Suspense fallback={<div className="page-body page-loading"><Busy label="Opening view" /></div>}>
                   {boardPage ? (
                     <div className="board-page">
+                      {project && <Button className="project-back" variant="ghost" size="sm" onClick={() => navigate("organization")}><ArrowLeft size={14} />All projects</Button>}
                       <header className="page-heading">
                           <div>
                             <div className="board-title">
-                            <h1>{title}</h1>
+                            <h1>{project ? <motion.span className="project-title-morph" layoutId={projectTitleId(project)} transition={reduced ? { duration: 0 } : titleMorph}>{title}</motion.span> : title}</h1>
                           {page === "today" && (
                               <p className="today-date">
                               {new Intl.DateTimeFormat(undefined, {
@@ -571,10 +593,9 @@ function Workspace() {
                         >
                           <motion.div
                             initial={false}
-                            animate={{
-                              width:
-                                (doneToday / todayTasks.length) * 100 + "%",
-                            }}
+                            style={{ originX: 0 }}
+                            animate={{ scaleX: doneToday / todayTasks.length }}
+                            transition={{ duration: reduced ? 0.1 : 0.5, ease: settle }}
                           />
                         </div>
                       )}
@@ -608,7 +629,7 @@ function Workspace() {
                             </span>
                           )}
                         </Button>
-                        {page !== "archive" && <ToggleGroup type="single" value={snapshot.settings.view} onValueChange={view => { if(view) saveSettings({...snapshot.settings, view}).catch(e => toast.error(e.message)); }}
+                        {page !== "archive" && <ToggleGroup type="single" value={taskView} onValueChange={view => { if (view) { if (project) setProjectView(view); else saveSettings({...snapshot.settings, view}).catch(e => toast.error(e.message)); } }}
                           className="view-toggle"
                           aria-label="Task view"
                         >
@@ -714,19 +735,19 @@ function Workspace() {
                           )}
                         </div>
                       ) : (
-                        <AnimatePresence mode="wait" initial={false}><motion.div key={snapshot.settings.view} className="task-view" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduced ? 0.06 : 0.12 }}><TaskBoard
+                        <AnimatePresence mode="popLayout" initial={false}><PresenceFrame key={taskView} className="task-view" initial={{ opacity: 0, y: reduced ? 0 : 6 }} animate={{ opacity: 1, y: 0, transition: { duration: reduced ? 0.1 : 0.26, ease: settle } }} exit={{ opacity: 0, transition: { duration: reduced ? 0.06 : 0.1, ease: "linear" } }}><TaskBoard
                           tasks={tasks}
                           allTasks={activeTasks}
                           columns={snapshot.columns}
                           projects={snapshot.projects}
                           catalog={catalog}
-                          view={snapshot.settings.view}
+                          view={taskView}
                           onOpen={openTask}
                           onAdd={addTask}
                           onChange={changeTask}
                           today={today}
                           selected={selected?.id}
-                        /></motion.div></AnimatePresence>
+                        /></PresenceFrame></AnimatePresence>
                       )}
                     </div>
                   ) : page === "jobs" ? (
@@ -763,8 +784,9 @@ function Workspace() {
                       onOnboard={() => setOnboarding(true)}
                     />
                   )}
-                </motion.div>
-              </AnimatePresence></Suspense>
+                  </Suspense>
+                </PresenceFrame>
+              </AnimatePresence>
             </main>
             {activeRuns.length > 0 && (
               <div className="activity-strip">
@@ -851,8 +873,8 @@ function Workspace() {
             <DialogHeader>
               <DialogTitle>A little orientation</DialogTitle>
               <DialogDescription>
-                Sift is a local workspace, not a cloud service. The local
-                service keeps schedules running, even with this window closed.
+                Your workspace stays on this computer. Keep Sift running in the
+                background for schedules to continue, even with this window closed.
               </DialogDescription>
             </DialogHeader>
             <dl className="shortcut-list">
@@ -896,6 +918,10 @@ function Workspace() {
             </div>
           </DialogContent>
         </Dialog>
+        {completing && <DoneReasonDialog title={completing.title} onCancel={() => setCompleting(null)} onConfirm={async reason => {
+          await applyTaskChange(completing, reason);
+          setCompleting(null);
+        }} />}
         <Toaster theme={darkTheme ? "dark" : "light"} richColors closeButton position="bottom-right" />
       </TooltipProvider>
     </MotionConfig>

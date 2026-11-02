@@ -245,7 +245,7 @@ func TestTaskQueryFailuresAreAtomicAndPermitExplicitRetry(t *testing.T) {
 					return err
 				case "parent completion":
 					parent.Status = "done"
-					_, err := s.SaveTask(parent, parent.Revision, "user", "", "complete-request")
+					_, err := s.SaveTask(parent, parent.Revision, "user", "Verified parent outcome", "complete-request")
 					return err
 				case "subtask validation":
 					_, err := s.SaveTask(child, child.Revision, "user", "", "child-request")

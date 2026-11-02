@@ -164,7 +164,7 @@ export function Onboarding({
             <motion.section
               key={step}
               variants={pageMotion(reduced)}
-              custom={1}
+              custom={{ sign: 1, depth: false }}
               initial="enter"
               animate="visible"
               exit="exit"
@@ -194,21 +194,21 @@ export function Onboarding({
                     </p>
                   </div>
                   <p className="muted">
-                    No account. No cloud sync. No new AI credentials.
+                    No Sift account needed. Use your existing AI setup.
                   </p>
                 </>
               ) : step === 1 ? (
                 <>
                   <p className="onboard-lede">
-                    Sift uses your existing Pi installation and a bundled image
-                    store. Check the real connections—no model prompt is sent.
+                    Connect Pi to run agents and check that image storage is
+                    ready. Checking connections won’t run an AI task.
                   </p>
                   <div className="connection-row">
                     <HardDrive size={20} />
                     <div>
                       <strong>Local image storage</strong>
                       <small>
-                        Bundled RustFS · private loopback connection
+                        Saves task images on this computer
                       </small>
                     </div>
                     <span className={storageReady ? "success" : storageError ? "error-text" : "muted"}
@@ -227,8 +227,8 @@ export function Onboarding({
                       <XCircle size={16} />
                       <div>
                         <strong>Image storage is unavailable.</strong>
-                        <p>{storageError}</p>
-                        <p>Inspect the RustFS log, then restart Sift. You can continue without images.</p>
+                        <p>Restart Sift to try again. You can continue without images.</p>
+                        <details><summary>Technical details</summary><p className="break-anywhere">{storageError}</p></details>
                       </div>
                     </div>
                   )}
@@ -265,8 +265,9 @@ export function Onboarding({
                     <TimezoneChoice value={timezone} onValueChange={setTimezone} />
                   </Field>
                   <small className="muted">
-                    Pi agents use your normal OS permissions. Sift does not
-                    sandbox their tools.
+                    Pi agents can access files and tools with your computer
+                    account’s permissions. Only ask them to use sources and
+                    actions you trust.
                   </small>
                 </>
               ) : step === 2 ? (
@@ -279,12 +280,12 @@ export function Onboarding({
                     {
                       key: "cli",
                       title: "Make sift available in your terminal",
-                      note: "Links this executable into ~/.local/bin. Your shell files stay untouched.",
+                      note: "Adds the sift command to ~/.local/bin. Your terminal settings stay unchanged.",
                     },
                     {
                       key: "skill",
                       title: "Teach local agents about Sift",
-                      note: "Installs ~/.agents/skills/sift/SKILL.md. Existing edits are never silently replaced.",
+                      note: "Installs instructions for using Sift. If a skill is already installed, you choose whether to replace it in Settings.",
                     },
                     {
                       key: "startup",

@@ -1,4 +1,12 @@
 {
+  "internal/sift/progress_test.go:go.lang.security.audit.xss.no-io-writestring-to-responsewriter:abe6e1f57aeaa8744393840123bba867accc6b26f000f0b5032fafd085fa2727": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Test-only httptest server returns one of three source-authored JSON fixtures (malformed, empty, queued run) to exercise CLI parsing failures. No request data, user content or browser rendering reaches the writer; the client is the Sift CLI under test, not an HTML page."
+  },
+  "web/src/components/TaskDetail.test.tsx:javascript.lang.security.audit.unknown-value-with-script-tag:6fe5d21a3baa61ff205403c0457ee8b66940ae4252ce07aa2ca294f276853de0": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Test-only userEvent.type fills the comment textarea with a literal script-tag attack fixture. No HTML is inserted by this call. The same test asserts the posted comment is rendered as text and the activity contains no script element. Keeping this input tests XSS prevention rather than executing script. Production comments use React text interpolation, not innerHTML."
+  },
   ".cache/security/installer.py:python.lang.security.audit.dangerous-subprocess-use-audit:a5df8fdabd5fc3150dc4975daf7a9d81200c1b5ecdc0d12ce6e0fefc2d27eede": {
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
     "reason": "Installer-only helper runs /bin/launchctl or systemctl resolved from the installing user's PATH, with source-authored user-service subcommands and argv lists, never a shell. Label, user domain and address are fixed; configured paths remain single arguments. No downloaded content, HTTP request or credential selects a command. Execution has a 20-second timeout, disabled stdin and captured output that is not echoed. Hermetic tests mock all service-manager calls, including failure and conflicting-port paths."
@@ -334,5 +342,9 @@
   "scripts/test-tooling.py:python.lang.security.audit.exec-detected:0b187e51088714a7cee68e1510ee844df6303633e4df13dceb6e79009e279e94": {
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
     "reason": "Hermetic notice tests compile only the two named FunctionDef nodes from the checked-in scripts/collect-licenses.py AST. The module's top-level network, subprocess and notice-writing steps are not executed. Selected functions receive disposable fixture paths and in-source test inventories; no HTTP, environment, model or caller-supplied source is evaluated. Running a modified test script already requires local code-execution trust."
+  },
+  "internal/sift/restart.go:go.lang.security.audit.dangerous-syscall-exec:cd0b6b06a6276af544c1871e8f1f623845d70dedd9a84428124afd92e6cf9ab3": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "After an authenticated POST /api/restart, Sift re-executes itself in place: os.Executable() is the running Sift binary (which an installed update has just replaced after SHA-256 verification), and os.Args/os.Environ() are the process's own original arguments and environment. No request body, header, task, comment, agent output or other user data reaches the path, argv or environment. The endpoint refuses while agents or maintenance are running and only acts after the HTTP server, streams, data lock and RustFS child have shut down."
   }
 }

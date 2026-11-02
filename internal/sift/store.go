@@ -171,11 +171,18 @@ func (s *Store) Latest() int64 {
 	return id
 }
 func (s *Store) Events(after int64, entity string, limit int) []Event {
+	return s.events(after, entity, limit, "")
+}
+func (s *Store) events(after int64, entity string, limit int, kind string) []Event {
 	q := "SELECT id,kind,entity_id,actor,reason,at,before_data,after_data,group_id FROM events WHERE id>?"
 	args := []any{after}
 	if entity != "" {
 		q += " AND entity_id=?"
 		args = append(args, entity)
+	}
+	if kind != "" {
+		q += " AND kind=?"
+		args = append(args, kind)
 	}
 	q += " ORDER BY id LIMIT ?"
 	args = append(args, limit)
@@ -308,6 +315,9 @@ func (s *Store) SaveTask(t Task, expected int, actor, reason, requestID string) 
 		if old.MergedInto != "" {
 			return t, conflict("Task has been merged; use its survivor or undo the merge")
 		}
+		if old.Status != "done" && t.Status == "done" && trim(reason) == "" {
+			return t, invalid("Provide a Done reason before completing a task")
+		}
 		if actor != "user" && (old.Status != t.Status && (t.Status == "done" || old.Status == "done") || old.Actor == "user") && trim(reason) == "" {
 			return t, invalid("An agent must provide a reason for completing/reopening or revising a manual decision")
 		}
@@ -317,8 +327,8 @@ func (s *Store) SaveTask(t Task, expected int, actor, reason, requestID string) 
 		if expected != 0 {
 			return t, conflict("Task does not exist")
 		}
-		if actor != "user" && t.Status == "done" && trim(reason) == "" {
-			return t, invalid("An agent must explain completion")
+		if t.Status == "done" && trim(reason) == "" {
+			return t, invalid("Provide a Done reason before completing a task")
 		}
 		t.ID = newID("tsk_")
 		t.CreatedAt = now()
@@ -707,4 +717,26 @@ func (s *Store) Logs(id string) []RunEntry {
 		}
 	}
 	return out
+}
+
+// Cursor-based activity avoids reprinting or truncating a long run's transcript.
+func (s *Store) RunActivity(id string, after int64) ([]runLogEntry, error) {
+	rows, err := s.DB.Query("SELECT rowid,data FROM run_logs WHERE run_id=? AND rowid>? ORDER BY rowid LIMIT 500", id, after)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []runLogEntry{}
+	for rows.Next() {
+		var entry runLogEntry
+		var data []byte
+		if err := rows.Scan(&entry.ID, &data); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(data, &entry.RunEntry); err != nil {
+			return nil, err
+		}
+		out = append(out, entry)
+	}
+	return out, rows.Err()
 }

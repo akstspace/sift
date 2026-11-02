@@ -123,7 +123,8 @@ describe("whole-card tasks with independent actions", () => {
     await waitFor(() => expect(screen.getByRole("region", { name: "Open" }).classList.contains("drag-over")).toBe(true));
     await user.keyboard("{ArrowRight}");
     await waitFor(() => expect(screen.getByRole("region", { name: "In progress" }).classList.contains("drag-over")).toBe(true));
-    expect(screen.getByRole("button", { name: task.title }).closest("article")!.style.transform).toBe("");
+    // Stationary means no drag translation; Motion may settle the card at "none".
+    expect(["", "none"]).toContain(screen.getByRole("button", { name: task.title }).closest("article")!.style.transform);
     expect(preview.querySelector(".task-check")).not.toBeNull();
     expect(preview.querySelector(".nested-tasks")?.textContent).toContain(child.title);
     await user.keyboard("{Enter}");
@@ -144,7 +145,7 @@ describe("whole-card tasks with independent actions", () => {
     const handle = screen.getByRole("button", { name: "Drag " + task.title }), source = handle.closest("article")!;
     await user.pointer([{ target: handle, coords: { x: 100, y: 80 }, keys: "[MouseLeft>]" }, { coords: { x: 120, y: 80 } }, { coords: { x: 420, y: 80 } }]);
     const preview = document.querySelector(".drag-preview")!;
-    expect(source.style.transform).toBe("");
+    expect(["", "none"]).toContain(source.style.transform);
     expect(preview.querySelector(".task-name")?.textContent).toBe(task.title);
     expect(preview.querySelector(".priority")?.textContent).toBe("High");
     expect(preview.querySelector(".project-label")?.textContent).toBe("Research");

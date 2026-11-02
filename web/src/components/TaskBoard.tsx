@@ -28,6 +28,7 @@ import {
 } from "@tabler/icons-react";
 import type { CatalogIcon, Column, Entity, Task } from "../types";
 import { Action, Button, Empty, TaskIcon } from "./shared";
+import { cardMotion, settle } from "../motion";
 
 interface Props {
   tasks: Task[];
@@ -85,6 +86,7 @@ function TaskCard({
 }) {
   const [expanded, setExpanded] = useState(initiallyExpanded);
   const reduced = useReducedMotion();
+  const arrival = cardMotion(!!reduced);
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } =
     useDraggable({ id: preview ? `preview-${task.id}` : task.id, data: { task, expanded }, disabled: compact || preview });
   const complete = childrenTasks.filter((c) => c.status === "done").length;
@@ -121,10 +123,13 @@ function TaskCard({
   return (
     <motion.article
       ref={setNodeRef}
-      initial={false}
-      animate={{ opacity: isDragging ? 0.35 : 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: reduced ? 0.08 : 0.15 }}
+      // Board cards that arrive later (an agent filed one, or it changed
+      // column) settle in; cards present when the board opens never animate,
+      // and virtualized list rows never replay an entrance while scrolling.
+      initial={compact || preview ? false : arrival.initial}
+      animate={{ opacity: isDragging ? 0.35 : 1, y: 0, scale: 1 }}
+      exit={arrival.exit}
+      transition={{ duration: reduced ? 0.1 : 0.26, ease: settle }}
       className={`task-card ${preview ? "drag-preview" : ""} ${compact ? "compact" : ""} ${task.status === "done" ? "completed" : ""} ${props.selected === task.id ? "selected" : ""}`}
     >
       <div className="task-card-main">

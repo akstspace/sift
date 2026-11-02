@@ -204,8 +204,9 @@ export function Jobs({
         </div>
       )}
       <p className="page-footnote">
-        Up to {snapshot.settings.concurrency} jobs in parallel · No same-job
-        overlap · One catch-up after sleep · No automatic whole-job retry
+        Up to {snapshot.settings.concurrency} jobs can run at once. Each job runs
+        one at a time and catches up once after sleep. Failed runs aren’t retried
+        automatically.
       </p>
       {editing && (
         <JobEditor
@@ -293,8 +294,7 @@ function JobEditor({
             {job.id ? "Edit scheduled job" : "Your next helpful agent"}
           </DialogTitle>
           <DialogDescription>
-            A specific prompt makes useful work. This is configuration, not a
-            chat.
+            Choose what the agent should do and when it should run.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={save}>
@@ -334,7 +334,7 @@ function JobEditor({
             <div className="form-grid">
               <Field
                 label="Model"
-                hint="Discovered from local Pi RPC. No silent fallback."
+                hint="Models available in Pi. If your choice is unavailable, the job stops rather than switching models."
               >
                 <SearchChoice
                   searchLabel="Search Pi models"
@@ -468,7 +468,7 @@ function JobEditor({
               <span>
                 Include Today’s task images in model input
                 <small>
-                  Explicitly sends up to 8 images (under 5 MB each) to the
+                  Sends up to 8 images (under 5 MB each) to the
                   chosen model.
                 </small>
               </span>
@@ -490,13 +490,13 @@ function JobEditor({
                 <div>
                   <strong>Remembered context</strong>
                   <p>
-                    This job resumes only its own Pi session. Prompt and model
-                    edits keep memory.
+                    Each run remembers this job’s earlier work. Changing the
+                    prompt or model keeps that memory.
                   </p>
                 </div>
                 <Confirm
                   title="Reset job memory"
-                  description="The next run starts a new Pi session. Old run history stays available. This cannot undo task changes."
+                  description="The next run starts without this job’s remembered context. Past runs stay available, and existing task changes are not undone."
                   action={async () => {
                     await api("/jobs/" + job.id + "/reset", "POST", {});
                     await refresh();
@@ -679,12 +679,13 @@ export function Runs({
                     </Button>
                   )}
                 </header>
+                <div key={detail.run.id} className="run-content" role="region" aria-label="Agent transcript" tabIndex={0} aria-live="off">
                 {detail.run.error && (
                   <div className="error" role="alert">
                     {detail.run.error}
                   </div>
                 )}
-                <div className="run-transcript" aria-live="off">
+                <div className="run-transcript">
                   {detail.entries.map((entry, i) =>
                     entry.type === "text" ? (
                       <span key={i}>{entry.text}</span>
@@ -715,6 +716,7 @@ export function Runs({
                 <div className="task-origin">
                   <span>{detail.run.id}</span>
                   <span>Session: {detail.run.sessionId}</span>
+                </div>
                 </div>
               </>
             ) : !selected ? (

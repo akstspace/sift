@@ -22,6 +22,17 @@ async function choose(label: string, name: string) {
   fireEvent.click(await screen.findByRole("option", { name }));
 }
 describe("deliberate settings and recovery", () => {
+  it("keeps routine settings in plain language and connection paths optional", async () => {
+    mount(); await screen.findByText("Ready");
+    expect(screen.getByRole("heading", { name: "Sift updates" })).toBeDefined();
+    expect(document.body.textContent).not.toMatch(/SHA-256|signed-release|GitHub HTTPS|akstspace\/sift|RustFS/);
+    const details = screen.getByText("Connection details").closest("details")!;
+    expect(details.open).toBe(false);
+    fireEvent.click(within(details).getByText("Connection details"));
+    expect(details.open).toBe(true);
+    expect(details.textContent).toContain("/fixture/data");
+    expect(details.textContent).toContain("/fixture/pi");
+  });
   it("keeps the restore confirmation open and prevents cancellation during replacement", async () => {
     const pending = deferred<Response>(); vi.stubGlobal("fetch", vi.fn(() => pending.promise));
     const { user } = mount();
@@ -64,7 +75,12 @@ describe("deliberate settings and recovery", () => {
     fireEvent.change(picker, { target: { files: [new File(["archive"], "workspace.zip")] } });
     await view.user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Cancel" })); expect(screen.queryByRole("alertdialog")).toBeNull();
     view.unmount(); mock.mockImplementation(async path => path === "/health" ? { ...health, storage: { ready: false, version: "", error: "Storage stopped" } } : path === "/update" ? { error: "No published release" } : []);
-    mount(); expect(await screen.findByText("Storage stopped")).toBeDefined(); expect(await screen.findByText("No published release")).toBeDefined();
+    const storageView = mount();
+    expect(await screen.findByText("Unavailable")).toBeDefined(); expect(await screen.findByText("No published release")).toBeDefined();
+    const storageAlert = screen.getByRole("alert"), storageDetails = within(storageAlert).getByText("Technical details").closest("details")!;
+    expect(storageAlert.textContent).toContain("You can continue without images"); expect(storageDetails.open).toBe(false);
+    await storageView.user.click(within(storageDetails).getByText("Technical details"));
+    expect(storageDetails.open).toBe(true); expect(storageDetails.textContent).toContain("Storage stopped");
   });
   it("persists timezone changes and explicitly turns desktop notifications back off", async () => {
     const { props, user } = mount(snapshotFixture({ settings: { ...snapshotFixture().settings, desktopNotifications: true } }));
@@ -78,7 +94,7 @@ describe("deliberate settings and recovery", () => {
     for (const [name, value] of [["Parallel jobs", "4"], ["Default timeout (minutes)", "45"], ["Daily backups to keep", "20"], ["Trash retention (days)", "35"], ["Detailed logs (days)", "40"], ["Archive completed tasks after (days)", "0"]]) {
       fireEvent.change(screen.getByRole("spinbutton", { name }), { target: { value } });
     }
-    await user.click(screen.getByRole("checkbox", { name: /Check for stable/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Check for Sift updates/ }));
     const snapshot: Snapshot = { ...props.snapshot, settings: { ...props.snapshot.settings, lastBackup: "2026-01-02T12:00:00Z" } };
     rerender(<Settings {...props} snapshot={snapshot} />);
     expect(screen.getByRole("combobox", { name: "Appearance" }).textContent).toBe("Dark");
@@ -144,11 +160,17 @@ describe("deliberate settings and recovery", () => {
     expect(mock).toHaveBeenCalledWith("/setup/skill", "POST", { overwrite: false });
     await user.click(screen.getByRole("button", { name: "Refresh / replace an existing skill" }));
     await user.click(screen.getByRole("button", { name: "Replace Sift skill" })); await waitFor(() => expect(mock).toHaveBeenCalledWith("/setup/skill", "POST", { overwrite: true }));
-    await user.click(screen.getByRole("button", { name: "Update Pi explicitly" })); expect(mock).not.toHaveBeenCalledWith("/pi/update", "POST", {});
+    await user.click(screen.getByRole("button", { name: "Update Pi" })); expect(mock).not.toHaveBeenCalledWith("/pi/update", "POST", {});
+    expect(screen.getByRole("alertdialog").textContent).toContain("may affect other agents");
     await user.click(screen.getByRole("button", { name: "Update local Pi" })); await waitFor(() => expect(mock).toHaveBeenCalledWith("/pi/update", "POST", {}));
     await user.click(screen.getByRole("button", { name: "Check now" })); await waitFor(() => expect(mock).toHaveBeenCalledWith("/update/check", "POST", {}));
-    await user.click(screen.getByRole("button", { name: "Apply 0.2.0" })); await user.click(screen.getByRole("button", { name: "Apply Sift update" }));
-    expect(await screen.findByText("Update installed. Restart the local Sift service to finish.")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Apply 0.2.0" }));
+    const confirmation = screen.getByRole("alertdialog");
+    expect(confirmation.textContent).toContain("backs up your workspace");
+    expect(confirmation.textContent).toContain("Finish or cancel active jobs");
+    expect(confirmation.textContent).not.toMatch(/binaries|checksum/);
+    await user.click(screen.getByRole("button", { name: "Apply Sift update" }));
+    expect(await screen.findByText("Update installed. Use Restart to update at the top of the window to finish.")).toBeDefined();
   });
   it.each(["denied", "granted"])("requests notification permission only after opting in, permission=%s", async permission => {
     const requestPermission = vi.fn(async () => permission); vi.stubGlobal("Notification", { requestPermission });

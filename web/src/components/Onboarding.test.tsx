@@ -21,6 +21,10 @@ describe("opt-in onboarding", () => {
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("RustFS exited: exit status 1");
     expect(alert.textContent).toContain("You can continue without images");
+    const details = within(alert).getByText("Technical details").closest("details")!;
+    expect(details.open).toBe(false);
+    await user.click(within(details).getByText("Technical details"));
+    expect(details.open).toBe(true);
     expect(screen.queryByRole("status", { name: "Starting image storage" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Continue for now" }));
     expect(await screen.findByText("Give your agents a way in.")).toBeDefined();

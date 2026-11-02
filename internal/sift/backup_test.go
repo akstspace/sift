@@ -42,6 +42,10 @@ func TestBackupRestoreHistoryMemoryLogsAndRequests(t *testing.T) {
 		t.Fatal(e)
 	}
 	s.Store.AddLog("run-fixture", RunEntry{Type: "text", Text: "Evidence"})
+	comment, e := s.Store.AddComment(a.ID, "A retained comment", "user", "comment-backup")
+	if e != nil {
+		t.Fatal(e)
+	}
 	before := s.Store.Events(0, a.ID, 100)
 	backup, e := s.Backup()
 	if e != nil {
@@ -64,6 +68,10 @@ func TestBackupRestoreHistoryMemoryLogsAndRequests(t *testing.T) {
 	after := s.Store.Events(0, a.ID, 100)
 	if !bytes.Equal(encode(before), encode(after)) {
 		t.Fatal("history did not survive restore")
+	}
+	replayed, e := s.Store.AddComment(a.ID, "A retained comment", "user", "comment-backup")
+	if e != nil || replayed.ID != comment.ID {
+		t.Fatal("comment idempotency lost after restore", replayed, e)
 	}
 	var job Job
 	s.Store.Get("job", j.ID, &job)

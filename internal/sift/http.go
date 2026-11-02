@@ -19,6 +19,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -29,6 +31,12 @@ type Connection struct {
 }
 
 func randomToken() string { b := make([]byte, 32); _, _ = rand.Read(b); return hex.EncodeToString(b) }
+
+// ErrRestart reports that Serve stopped because the person asked Sift to
+// restart (usually to finish an installed update). Every resource has been
+// released when it is returned, so the caller may re-execute the binary.
+var ErrRestart = errors.New("restart requested")
+
 func Serve(ctx context.Context, dir, address string) error {
 	if host, _, e := net.SplitHostPort(address); e != nil || host != "127.0.0.1" {
 		return invalid("Sift binds only to 127.0.0.1")
@@ -95,9 +103,20 @@ func Serve(ctx context.Context, dir, address string) error {
 		mux.ServeHTTP(w, r)
 	})
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	stopping, restartRequested := make(chan struct{}), make(chan struct{})
+	var restarting atomic.Bool
+	var requestOnce sync.Once
+	s.stopping = stopping
+	s.restart = func() { requestOnce.Do(func() { restarting.Store(true); close(restartRequested) }) }
+	server.RegisterOnShutdown(func() { close(stopping) })
 	s.Start()
+	shutdownDone := make(chan struct{})
 	go func() {
-		<-ctx.Done()
+		defer close(shutdownDone)
+		select {
+		case <-ctx.Done():
+		case <-restartRequested:
+		}
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = server.Shutdown(shutdown)
@@ -105,6 +124,12 @@ func Serve(ctx context.Context, dir, address string) error {
 	fmt.Printf("Sift %s\nWorkspace: %s\nData: %s\n", Version, connection.URL, s.Dir)
 	err = server.Serve(l)
 	if err == http.ErrServerClosed {
+		// Let in-flight requests (including the restart response) finish
+		// before the deferred service, storage, and data-lock cleanup runs.
+		<-shutdownDone
+		if restarting.Load() {
+			return ErrRestart
+		}
 		return nil
 	}
 	return err
@@ -154,14 +179,16 @@ func (s *Service) routes() http.Handler {
 		writeJSON(w, 200, map[string]any{"version": Version, "dataDir": s.Dir, "storage": s.Storage.Status(), "piPath": PiPath(), "timezone": cfg.Timezone, "platform": runtime.GOOS})
 	})
 	mux.HandleFunc("GET /api/pi", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
-		defer cancel()
-		data, err := ProbePi(ctx, r.URL.Query().Get("provider"), r.URL.Query().Get("model"))
-		if err != nil {
-			apiError(w, &APIError{503, err.Error()})
-			return
-		}
-		writeJSON(w, 200, data)
+		writeOperation(w, r, func(ctx context.Context) (any, error) {
+			reportProgress(ctx, "Connecting to Pi and discovering available models; no AI task is run", 0, 0, "")
+			ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+			defer cancel()
+			data, err := ProbePi(ctx, r.URL.Query().Get("provider"), r.URL.Query().Get("model"))
+			if err != nil {
+				return nil, &APIError{503, err.Error()}
+			}
+			return data, nil
+		})
 	})
 	mux.HandleFunc("POST /api/pi/update", func(w http.ResponseWriter, r *http.Request) {
 		s.piUpdateMu.Lock()
@@ -212,6 +239,45 @@ func (s *Service) routes() http.Handler {
 	})
 	mux.HandleFunc("POST /api/tasks", func(w http.ResponseWriter, r *http.Request) { s.mutateTask(w, r, "") })
 	mux.HandleFunc("PUT /api/tasks/{id}", func(w http.ResponseWriter, r *http.Request) { s.mutateTask(w, r, r.PathValue("id")) })
+	mux.HandleFunc("GET /api/tasks/{id}/comments", func(w http.ResponseWriter, r *http.Request) {
+		var task Task
+		if !s.Store.Get("task", r.PathValue("id"), &task) {
+			apiError(w, &APIError{404, "Task not found"})
+			return
+		}
+		var after int64
+		if value := r.URL.Query().Get("after"); value != "" {
+			var err error
+			after, err = strconv.ParseInt(value, 10, 64)
+			if err != nil || after < 0 {
+				apiError(w, invalid("after must be a nonnegative event ID"))
+				return
+			}
+		}
+		writeJSON(w, 200, s.Store.events(after, task.ID, 1000, "comment"))
+	})
+	mux.HandleFunc("POST /api/tasks/{id}/comments", func(w http.ResponseWriter, r *http.Request) {
+		s.runMu.Lock()
+		paused := s.maintenance
+		s.runMu.Unlock()
+		if paused {
+			apiError(w, conflict("Comments paused during backup/update"))
+			return
+		}
+		var in struct {
+			Text      string `json:"text"`
+			RequestID string `json:"requestId"`
+		}
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		event, err := s.Store.AddComment(r.PathValue("id"), in.Text, actorOf(r), in.RequestID)
+		if err != nil {
+			apiError(w, err)
+			return
+		}
+		writeJSON(w, 200, event)
+	})
 	mux.HandleFunc("POST /api/tasks/{id}/merge", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Target         string `json:"target"`
@@ -307,6 +373,28 @@ func (s *Service) routes() http.Handler {
 		writeJSON(w, 200, map[string]any{"reset": true})
 	})
 	mux.HandleFunc("GET /api/runs", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, s.Store.ListRaw("run")) })
+	mux.HandleFunc("GET /api/runs/{id}/activity", func(w http.ResponseWriter, r *http.Request) {
+		var run Run
+		if !s.Store.Get("run", r.PathValue("id"), &run) {
+			apiError(w, &APIError{404, "Run not found"})
+			return
+		}
+		var after int64
+		if value := r.URL.Query().Get("after"); value != "" {
+			var err error
+			after, err = strconv.ParseInt(value, 10, 64)
+			if err != nil || after < 0 {
+				apiError(w, invalid("after must be a nonnegative activity ID"))
+				return
+			}
+		}
+		entries, err := s.Store.RunActivity(run.ID, after)
+		if err != nil {
+			apiError(w, err)
+			return
+		}
+		writeJSON(w, 200, runActivity{Run: run, Entries: entries})
+	})
 	mux.HandleFunc("GET /api/runs/{id}", func(w http.ResponseWriter, r *http.Request) {
 		var run Run
 		if !s.Store.Get("run", r.PathValue("id"), &run) {
@@ -417,22 +505,32 @@ func (s *Service) routes() http.Handler {
 		defer s.updateMu.Unlock()
 		writeJSON(w, 200, s.update)
 	})
-	mux.HandleFunc("POST /api/update/check", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, s.CheckUpdate(r.Context())) })
+	mux.HandleFunc("POST /api/update/check", func(w http.ResponseWriter, r *http.Request) {
+		writeOperation(w, r, func(ctx context.Context) (any, error) { return s.CheckUpdate(ctx), nil })
+	})
 	mux.HandleFunc("POST /api/update/apply", func(w http.ResponseWriter, r *http.Request) {
-		out, err := s.ApplyUpdate(r.Context())
-		if err != nil {
-			apiError(w, err)
+		writeOperation(w, r, func(ctx context.Context) (any, error) { return s.ApplyUpdate(ctx) })
+	})
+	mux.HandleFunc("POST /api/restart", func(w http.ResponseWriter, r *http.Request) {
+		if s.restart == nil {
+			apiError(w, invalid("Restart is available only while Sift is serving"))
 			return
 		}
-		writeJSON(w, 200, out)
+		s.runMu.Lock()
+		busy := s.maintenance || len(s.active) != 0
+		s.runMu.Unlock()
+		if busy {
+			apiError(w, conflict("Wait for running agents or maintenance to finish, then restart"))
+			return
+		}
+		writeJSON(w, 202, map[string]bool{"restarting": true})
+		s.restart()
 	})
 	mux.HandleFunc("POST /api/backups", func(w http.ResponseWriter, r *http.Request) {
-		path, err := s.Backup()
-		if err != nil {
-			apiError(w, err)
-			return
-		}
-		writeJSON(w, 200, map[string]any{"name": filepath.Base(path), "path": path})
+		writeOperation(w, r, func(ctx context.Context) (any, error) {
+			path, err := s.backupContext(ctx)
+			return map[string]any{"name": filepath.Base(path), "path": path}, err
+		})
 	})
 	mux.HandleFunc("GET /api/backups", func(w http.ResponseWriter, r *http.Request) {
 		files, _ := filepath.Glob(filepath.Join(s.Dir, "backups", "*.zip"))
@@ -575,6 +673,8 @@ func (s *Service) streamEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		select {
 		case <-r.Context().Done():
+			return
+		case <-s.stopping:
 			return
 		case <-ticker.C:
 			fmt.Fprintf(w, "event: tick\ndata: {}\n\n")

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api";
@@ -15,7 +15,7 @@ function mount(jobs = [jobFixture()], create = false) {
   return { ...render(<Jobs {...props} />, { wrapper: TestProviders }), props, user: userEvent.setup() };
 }
 async function choice(label: string, option: string) {
-  fireEvent.click(screen.getByRole("combobox", { name: label }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("combobox", { name: label }));
   fireEvent.click(await screen.findByRole("option", { name: option }));
 }
 describe("scheduled jobs without model prompts", () => {
@@ -155,6 +155,30 @@ describe("real run history presentation", () => {
     const { props, user } = runs("run_test"); expect(await screen.findByText("Connecting to local Pi…")).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Cancel" })); await waitFor(() => expect(props.refresh).toHaveBeenCalled());
     expect(mock).toHaveBeenCalledWith("/runs/run_test/cancel", "POST", {});
+  });
+  it("keeps long transcripts focusable and preserves reading position when new output arrives", async () => {
+    const entries = Array.from({ length: 80 }, (_, i) => ({ type: "text", text: `Output ${i + 1}\n` }));
+    const detail = { run: run({ status: "running" }), entries };
+    mock.mockResolvedValue(detail);
+    const interval = vi.spyOn(globalThis, "setInterval");
+    const { user } = runs("run_test");
+    const transcript = await screen.findByRole("region", { name: "Agent transcript" });
+    expect(transcript.tabIndex).toBe(0);
+    expect(transcript.getAttribute("aria-live")).toBe("off");
+    expect(within(transcript).queryByRole("heading")).toBeNull();
+    expect(within(transcript).queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(transcript.textContent).toContain("Output 80");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.tab();
+    expect(document.activeElement).toBe(transcript);
+    transcript.scrollTop = 240;
+    mock.mockResolvedValue({ ...detail, entries: [...entries, { type: "text", text: "New output" }] });
+    const poll = interval.mock.calls.find(([, delay]) => delay === 1500)![0] as () => Promise<void>;
+    await act(async () => { await poll(); });
+    expect(await screen.findByText(/New output/)).toBeDefined();
+    expect(screen.getByRole("region", { name: "Agent transcript" })).toBe(transcript);
+    expect(transcript.scrollTop).toBe(240);
+    expect(document.activeElement).toBe(transcript);
   });
   it("shows load failures and expires only detailed logs, not summaries", async () => {
     mock.mockRejectedValueOnce(new Error("Record unavailable")); const view = runs("run_test");

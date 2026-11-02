@@ -202,6 +202,12 @@ func TestUpdateReplacesOnlyDisposableExecutable(t *testing.T) {
 		if err != nil || result["installed"] != "v99.0.0" || result["restartRequired"] != true {
 			t.Fatal(result, err)
 		}
+		if s.update.Installed != "v99.0.0" || !s.update.RestartRequired {
+			t.Fatal("installed update must stay visible until restart", s.update)
+		}
+		if later := s.CheckUpdate(context.Background()); later.Installed != "v99.0.0" || !later.RestartRequired {
+			t.Fatal("a later check forgot the pending restart", later)
+		}
 		entries, _ := os.ReadDir(filepath.Join(s.Dir, "backups"))
 		if len(entries) != 1 {
 			t.Fatal("missing safety backup")

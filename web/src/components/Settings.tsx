@@ -22,6 +22,8 @@ import { api, friendlyTime } from "../api";
 import type { Column, Settings as SettingsType, Snapshot } from "../types";
 import { Button, Busy, Confirm, CopyButton, Field } from "./shared";
 import { InstallApp } from "./InstallApp";
+import { TagManager } from "./Organization";
+import { UPDATE_CHANGED } from "./UpdateNotice";
 import { useDraftGuard, useDraftProtection } from "./DraftGuard";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 
@@ -196,7 +198,7 @@ export function Settings({
                 onCheckedChange={(v) => set("checkUpdates", v === true)}
               />
               <span>
-                Check for stable Sift updates
+                Check for Sift updates
                 <small>
                   At startup and daily. Updates are never applied automatically.
                 </small>
@@ -455,30 +457,36 @@ export function Settings({
           </div>
         </div>
       </section>
+      <TagManager snapshot={snapshot} refresh={refresh} />
       <section className="settings-section">
         <div>
           <h2>Local connections</h2>
           <p>
-            Opt-in setup. No shell-profile edits, no silent overwrites, no
-            duplicate credentials.
+            Connect your terminal and agents, or keep Sift running at login.
+            Each option is up to you.
           </p>
         </div>
         <div className="settings-controls">
           <div className="health-line">
             <HardDrive size={17} />
-            <strong>RustFS {health?.storage.version}</strong>
+            <strong>Image storage</strong>
             <span className={health?.storage.ready ? "success" : "error-text"}>
               {health?.storage.ready
                 ? "Ready"
-                : health?.storage.error || "Checking…"}
+                : health?.storage.error ? "Unavailable" : "Checking…"}
             </span>
           </div>
-          <small className="break-anywhere">
-            Data: {health?.dataDir || "Loading…"}
-          </small>
-          <small className="break-anywhere">
-            Pi: {health?.piPath || "Loading…"}
-          </small>
+          {health?.storage.error && <div className="error" role="alert">
+            <div>
+              <p>Image storage is unavailable. Restart Sift to try again. You can continue without images.</p>
+              <details><summary>Technical details</summary><p className="break-anywhere">{health.storage.error}</p></details>
+            </div>
+          </div>}
+          <details>
+            <summary>Connection details</summary>
+            <p className="small break-anywhere">Data folder: {health?.dataDir || "Loading…"}</p>
+            <p className="small break-anywhere">Pi location: {health?.piPath || "Loading…"}</p>
+          </details>
           <div className="button-row">
             {["cli", "skill", "startup"].map((k) => (
               <Button
@@ -497,7 +505,7 @@ export function Settings({
           </div>
           <Confirm
             title="Replace Sift skill"
-            description="This explicitly replaces ~/.agents/skills/sift/SKILL.md, including any local edits. Other agent settings are untouched."
+            description="Replace the installed Sift skill, including any changes you made to it. Other agent settings stay unchanged."
             action={() => setup("skill", true)}
           >
             {(open) => (
@@ -525,7 +533,7 @@ export function Settings({
           </p>
           <Confirm
             title="Update local Pi"
-            description="Updates your shared Pi installation using pi update. This may affect other local agents. Sift waits for no active jobs; existing Pi credentials and normal extensions are reused."
+            description="Update Pi on this computer. This may affect other agents that use Pi. Finish or cancel active Sift jobs before continuing."
             action={async () => {
               await api("/pi/update", "POST", {});
               toast.success("Pi update completed");
@@ -534,7 +542,7 @@ export function Settings({
             {(open) => (
               <Button variant="outline" className="self-start" onClick={open}>
                 <Terminal size={15} />
-                Update Pi explicitly
+                Update Pi
               </Button>
             )}
           </Confirm>
@@ -554,11 +562,9 @@ export function Settings({
       </section>
       <section className="settings-section">
         <div>
-          <h2>Updates & trust</h2>
+          <h2>Sift updates</h2>
           <p>
-            Stable public releases from akstspace/sift only. SHA-256
-            verification over GitHub HTTPS; not a separate signed-release trust
-            system.
+            Choose when to install a new version.
           </p>
         </div>
         <div className="settings-controls">
@@ -592,11 +598,12 @@ export function Settings({
             {update?.available && (
               <Confirm
                 title="Apply Sift update"
-                description="A backup is required first. No jobs may be active. Downloaded binaries are checksum-verified, and you will restart Sift to use the new version."
+                description="Sift backs up your workspace before updating. Finish or cancel active jobs first, then restart Sift after the update."
                 action={async () => {
                   await api("/update/apply", "POST", {});
+                  window.dispatchEvent(new Event(UPDATE_CHANGED));
                   setResult(
-                    "Update installed. Restart the local Sift service to finish.",
+                    "Update installed. Use Restart to update at the top of the window to finish.",
                   );
                 }}
               >

@@ -64,6 +64,10 @@ func (s *Service) beginMaintenance() (func(), error) {
 
 // Caller holds the maintenance and store locks.
 func (s *Service) backupLocked() (string, error) {
+	return s.backupLockedContext(s.ctx)
+}
+func (s *Service) backupLockedContext(ctx context.Context) (string, error) {
+	reportProgress(ctx, "Writing workspace records and history", 0, 0, "")
 	dir := filepath.Join(s.Dir, "backups")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
@@ -84,6 +88,9 @@ func (s *Service) backupLocked() (string, error) {
 	m := archiveManifest{Format: 2, Version: Version, ExportedAt: now(), Files: map[string]string{}}
 	var total int64
 	add := func(name string, b []byte) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		total += int64(len(b))
 		if total > archiveLimit {
 			return invalid("Backup exceeds the 800 MB export limit; reduce retained logs or session data")
@@ -104,6 +111,9 @@ func (s *Service) backupLocked() (string, error) {
 	}
 	events := []Event{}
 	for cursor := int64(0); ; {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 		batch := s.Store.Events(cursor, "", 2000)
 		if len(batch) == 0 {
 			break
@@ -124,9 +134,11 @@ func (s *Service) backupLocked() (string, error) {
 	if err = add("logs.json", encode(logs)); err != nil {
 		return "", err
 	}
-	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
-	for _, a := range listAs[Attachment](s.Store, "attachment") {
+	attachments := listAs[Attachment](s.Store, "attachment")
+	reportProgress(ctx, "Backing up task images", 0, int64(len(attachments)), "images")
+	for i, a := range attachments {
 		b, e := s.Storage.Read(ctx, a.ID)
 		if e != nil {
 			return "", fmt.Errorf("Cannot back up image %s: %w", a.ID, e)
@@ -138,9 +150,14 @@ func (s *Service) backupLocked() (string, error) {
 		if err = add("images/"+a.ID, b); err != nil {
 			return "", err
 		}
+		reportProgress(ctx, "Backing up task images", int64(i+1), int64(len(attachments)), "images")
 	}
+	reportProgress(ctx, "Backing up job memory", 0, 0, "")
 	root := filepath.Join(s.Dir, "sessions")
 	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, e error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if os.IsNotExist(e) && p == root {
 			return nil
 		}
@@ -171,6 +188,10 @@ func (s *Service) backupLocked() (string, error) {
 		return add("sessions/"+filepath.ToSlash(rel), b)
 	})
 	if err != nil {
+		return "", err
+	}
+	reportProgress(ctx, "Finalizing and syncing backup to disk", 0, 0, "")
+	if err := ctx.Err(); err != nil {
 		return "", err
 	}
 	w, err := z.Create("manifest.json")

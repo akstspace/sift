@@ -11,7 +11,6 @@ import {
   IconTrash as Trash2,
   IconX as X,
 } from "@tabler/icons-react";
-import type { Entity } from "../types";
 import { useId } from "react";
 import { LayoutGroup, motion, useReducedMotion } from "motion/react";
 import { selectionSpring } from "../motion";
@@ -22,7 +21,6 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
-  SidebarGroupAction,
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
@@ -35,11 +33,14 @@ import {
 export const navigation = [
   { id: "today", label: "Today", icon: SunMedium },
   { id: "backlog", label: "All tasks", icon: ListCheck },
-  { id: "organization", label: "Projects & tags", icon: Folder },
+  { id: "organization", label: "Projects", icon: Folder },
   { id: "jobs", label: "Agents", icon: Terminal },
   { id: "runs", label: "Run history", icon: History },
 ];
 
+// One highlight travels between destinations. It sits beside the button, not
+// inside it: buttons clip their content, which would cut the moving highlight
+// down to a sliver mid-flight.
 function Selection({ active }: { active: boolean }) {
   const reduced = useReducedMotion();
   return active ? <motion.span aria-hidden="true" className="sidebar-selection" layoutId={reduced ? undefined : "selected-destination"} initial={false} transition={reduced ? { duration: 0 } : selectionSpring} /> : null;
@@ -48,27 +49,24 @@ function Selection({ active }: { active: boolean }) {
 export function AppSidebar({
   page,
   project,
-  projects,
   counts,
   version,
   navigate,
-  openProject,
   addTask,
   showHelp,
 }: {
   page: string;
   project: string;
-  projects: Entity[];
   counts: Record<string, number | undefined>;
   version: string;
   navigate: (page: string) => void;
-  openProject: (id: string) => void;
   addTask: () => void;
   showHelp: () => void;
 }) {
   const { state, isMobile, setOpenMobile } = useSidebar();
   const selectionId = useId();
   const compact = state === "collapsed" && !isMobile;
+  const activePage = project ? "organization" : page;
   const go = (action: () => void) => {
     setOpenMobile(false);
     action();
@@ -123,14 +121,14 @@ export function AppSidebar({
             <SidebarMenu>
               {navigation.map(({ id, label, icon: Icon }) => (
                 <SidebarMenuItem key={id}>
+                  <Selection active={activePage === id} />
                   <SidebarMenuButton
-                    isActive={page === id && !project}
-                    aria-current={page === id && !project ? "page" : undefined}
+                    isActive={activePage === id}
+                    aria-current={activePage === id ? "page" : undefined}
                     aria-label={label}
                     tooltip={label}
                     onClick={() => go(() => navigate(id))}
                   >
-                    <Selection active={page === id && !project} />
                     <Icon />
                     <span>{label}</span>
                   </SidebarMenuButton>
@@ -142,48 +140,6 @@ export function AppSidebar({
             </SidebarMenu>
           </nav>
         </SidebarGroup>
-        <SidebarGroup className="sift-project-group">
-          <SidebarGroupLabel>Projects</SidebarGroupLabel>
-          <SidebarGroupAction
-            aria-label="Manage projects"
-            title="Manage projects"
-            onClick={() => go(() => navigate("organization"))}
-          >
-            <Plus />
-          </SidebarGroupAction>
-          <SidebarMenu>
-            {projects
-              .filter((p) => !p.archived)
-              .slice(0, 10)
-              .map((p) => (
-                <SidebarMenuItem key={p.id}>
-                  <SidebarMenuButton
-                    isActive={project === p.id}
-                    aria-current={project === p.id ? "page" : undefined}
-                    aria-label={p.name}
-                    tooltip={p.name}
-                    onClick={() => go(() => openProject(p.id))}
-                  >
-                    <Selection active={project === p.id} />
-                    <Folder className={"project-color " + p.color} />
-                    <span>{p.name}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            {!projects.some((p) => !p.archived) && (
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  tooltip="Create a project"
-                  aria-label="Create a project"
-                  onClick={() => go(() => navigate("organization"))}
-                >
-                  <Plus />
-                  <span>Create a project</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )}
-          </SidebarMenu>
-        </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="sift-sidebar-footer">
         <SidebarMenu>
@@ -193,6 +149,7 @@ export function AppSidebar({
             { id: "trash", label: "Trash", icon: Trash2 },
           ].map(({ id, label, icon: Icon }) => (
             <SidebarMenuItem key={id}>
+              <Selection active={page === id} />
               <SidebarMenuButton
                 isActive={page === id}
                 aria-current={page === id ? "page" : undefined}
@@ -200,7 +157,6 @@ export function AppSidebar({
                 tooltip={label}
                 onClick={() => go(() => navigate(id))}
               >
-                <Selection active={page === id} />
                 <Icon />
                 <span>{label}</span>
               </SidebarMenuButton>

@@ -32,6 +32,7 @@ import { api, friendlyTime, upload } from "../api";
 import type {
   CatalogIcon,
   Duplicate,
+  Entity,
   HistoryEntry,
   Snapshot,
   Task,
@@ -56,6 +57,7 @@ import { useDraftGuard, useDraftProtection } from "./DraftGuard";
 import { taskSheetMotion } from "../motion";
 import { useIsMobile } from "../hooks/use-mobile";
 import { TaskTitle, type TaskTitleHandle } from "./TaskTitle";
+import { DoneReasonDialog } from "./DoneReasonDialog";
 
 export function TaskDetail({
   initial,
@@ -91,12 +93,17 @@ export function TaskDetail({
     [mergeTarget, setMergeTarget] = useState(""),
     [pendingOpen, setPendingOpen] = useState<Task | null>(null),
     [mergeReason, setMergeReason] = useState(""),
-    [newCheck, setNewCheck] = useState("");
+    [newCheck, setNewCheck] = useState(""),
+    [newTag, setNewTag] = useState(""),
+    [tagBusy, setTagBusy] = useState(false);
+  const [comment, setComment] = useState(""), [commentError, setCommentError] = useState(""), [completing, setCompleting] = useState(false);
+  const commentRequest = useRef({ text: "", id: "" });
+  const posting = useRef(false);
   const form = useRef<HTMLFormElement>(null),
     titleRef = useRef<TaskTitleHandle>(null),
     picker = useRef<HTMLInputElement>(null);
   const baseline = useRef(JSON.stringify(initial));
-  const dirty = JSON.stringify(task) !== baseline.current || !!newCheck.trim();
+  const dirty = JSON.stringify(task) !== baseline.current || !!newCheck.trim() || !!newTag.trim() || !!comment.trim();
   useDraftProtection(dirty, busy);
   // A completed merge may navigate only after this sheet's busy protection has
   // been released. Parent navigation still passes through the ordinary guard.
@@ -119,7 +126,7 @@ export function TaskDetail({
         .then((v) => { if (!cancelled) setHistory(v.history); })
         .catch(() => {});
     return () => { cancelled = true; };
-  }, [initial.id]);
+  }, [initial.id, snapshot.cursor]);
   useEffect(() => {
     let cancelled = false;
     if (task.title.trim().length < 3) {
@@ -142,21 +149,56 @@ export function TaskDetail({
   }, [task.title, task.id, task.project]);
   const update = <K extends keyof Task>(key: K, value: Task[K]) =>
     setTask((t) => ({ ...t, [key]: value }));
+  // Tags are created where they are used. Reuse a same-named tag instead of
+  // creating a near-duplicate; the task keeps it once its changes are saved.
+  const addTag = async () => {
+    const name = newTag.trim();
+    if (!name || tagBusy) return;
+    const existing = snapshot.tags.find(t => t.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase());
+    const apply = (id: string) => setTask(t => t.tags.includes(id) ? t : { ...t, tags: [...t.tags, id] });
+    if (existing) { apply(existing.id); setNewTag(""); return; }
+    setTagBusy(true); setError("");
+    try {
+      const created = await api<Entity>("/tags", "POST", { id: "", name, color: "slate", icon: "tag", archived: false });
+      apply(created.id); setNewTag("");
+      await refresh();
+    } catch (e) { setError((e as Error).message); }
+    finally { setTagBusy(false); }
+  };
   const close = () => guard(onClose);
-  const save = async () => {
+  const save = async (reason?: string) => {
     if (busy) return;
+    if (comment.trim()) { setCommentError("Post or clear your comment before saving task changes."); return; }
+    if (newTag.trim()) { setError("Add or clear the new tag before saving task changes."); return; }
+    if (task.status === "done" && JSON.parse(baseline.current).status !== "done" && !reason) { setCompleting(true); return; }
+    if (task.status === "done" && !task.id && !reason) { setCompleting(true); return; }
     setBusy(true);
     setError("");
     try {
       const pendingCheck = newCheck.trim() ? [{ id: crypto.randomUUID(), title: newCheck.trim(), done: false }] : [];
-      const saved = await onSave({ ...task, checklist: [...task.checklist, ...pendingCheck] });
+      const value = { ...task, checklist: [...task.checklist, ...pendingCheck] };
+      const saved = reason ? await onSave(value, reason) : await onSave(value);
       setTask(saved);
       onClose();
     } catch (e) {
+      if (reason) throw e;
       setError((e as Error).message);
     } finally {
       setBusy(false);
     }
+  };
+  const postComment = async () => {
+    if (busy || posting.current || !comment.trim()) return;
+    posting.current = true; setBusy(true); setCommentError("");
+    const text = comment.trim();
+    if (commentRequest.current.text !== text) commentRequest.current = { text, id: crypto.randomUUID() };
+    try {
+      const entry = await api<HistoryEntry>("/tasks/" + task.id + "/comments", "POST", { text, requestId: commentRequest.current.id });
+      setHistory(entries => [...entries.filter(h => h.id !== entry.id), entry]);
+      setComment(""); commentRequest.current = { text: "", id: "" };
+      await refresh();
+    } catch (e) { setCommentError((e as Error).message); }
+    finally { posting.current = false; setBusy(false); }
   };
   const addImages = async (files: File[]) => {
     if (busy || !files.length) return;
@@ -298,7 +340,7 @@ export function TaskDetail({
                 This task changed elsewhere. Your draft is preserved.{" "}
                 <Action
                   type="button"
-                  onClick={() => guard(() => { baseline.current = JSON.stringify(current); setTask(structuredClone(current!)); setNewCheck(""); })}
+                   onClick={() => guard(() => { baseline.current = JSON.stringify(current); setTask(structuredClone(current!)); setNewCheck(""); setComment(""); })}
                 >
                   Load latest version
                 </Action>{" "}
@@ -340,9 +382,10 @@ export function TaskDetail({
               </Field>
             </div>
             <Field label="Tags">
-              <div className="tag-options">
-                {snapshot.tags
-                  .filter((t) => !t.archived)
+              <div className="tag-options" role="group">
+                {[...snapshot.tags]
+                  .filter((t) => !t.archived || task.tags.includes(t.id))
+                  .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }))
                   .map((t) => (
                     <Action
                       key={t.id}
@@ -360,9 +403,18 @@ export function TaskDetail({
                       {task.tags.includes(t.id) && <Check size={12} />} {t.name}
                     </Action>
                   ))}
-                {!snapshot.tags.length && (
-                  <small>Create tags in Projects & tags.</small>
-                )}
+                <div className="tag-create">
+                  <Input
+                    aria-label="New tag name"
+                    placeholder={snapshot.tags.length ? "Add a tag…" : "Add the first tag…"}
+                    maxLength={100}
+                    value={newTag}
+                    disabled={tagBusy}
+                    onChange={e => setNewTag(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
+                  />
+                  <Button type="button" variant="ghost" size="sm" disabled={!newTag.trim() || tagBusy} onClick={addTag}>{tagBusy ? <Busy label="Adding" /> : <><Plus size={13} />Add</>}</Button>
+                </div>
               </div>
             </Field>
             <Tabs value={tab} onValueChange={setTab} className="description-tabs">
@@ -641,24 +693,32 @@ export function TaskDetail({
             {task.id && (
               <>
                 <div className="section-heading">
-                  <h3>History</h3>
-                  <span>Revision {task.revision}</span>
+                  <h3>Activity</h3>
                 </div>
-                <ol className="history-list">
+                {!task.deletedAt && !task.mergedInto && <div className="comment-composer">
+                  <Field label="Add a comment" hint="Comments are posted separately from task changes.">
+                    <Textarea rows={3} maxLength={10000} value={comment} placeholder="Add an update, question, or useful context…" onChange={event => setComment(event.target.value)} onKeyDown={event => {
+                      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); event.stopPropagation(); void postComment(); }
+                    }} />
+                  </Field>
+                  {commentError && <p className="error" role="alert">{commentError}</p>}
+                  <Button type="button" variant="outline" disabled={busy || !comment.trim()} onClick={postComment}>Post comment</Button>
+                </div>}
+                <ol className="history-list" aria-label="Task activity">
                   {[...history].reverse().map((h) => (
                     <li key={h.id}>
                       <span className="history-node" />
                       <div>
                         <strong>{h.actor === "user" ? "You" : h.actor}</strong>
                         <p>
-                          {h.reason ||
+                          {h.kind === "comment" && <span className="activity-kind">Comment · </span>}{h.reason ||
                             (!h.before
                               ? "Created this task"
                               : "Updated this task")}
                         </p>
                         <time>{friendlyTime(h.at)}</time>
                       </div>
-                      <Confirm
+                      {h.kind === "task" && <Confirm
                         title="Undo change"
                         description="Undo this action only if no newer changes would be overwritten. Related merge changes are restored together."
                         action={async () => {
@@ -679,14 +739,18 @@ export function TaskDetail({
                             <Undo2 size={14} />
                           </Button>
                         )}
-                      </Confirm>
+                      </Confirm>}
                     </li>
                   ))}
                 </ol>
-                <div className="task-origin">
-                  <span>{task.id}</span>
-                  <span>Source: {task.source || "manual"}</span>
-                </div>
+                <details>
+                  <summary>Task details</summary>
+                  <div className="task-origin">
+                    <span>{task.id}</span>
+                    <span>Source: {task.source || "manual"}</span>
+                    <span>Revision {task.revision}</span>
+                  </div>
+                </details>
               </>
             )}
             {error && (
@@ -702,7 +766,7 @@ export function TaskDetail({
                 description={
                   task.deletedAt
                     ? "Return this task to your workspace."
-                    : "The task stays recoverable in Trash for the configured retention period. Move subtasks out before deleting a parent."
+                    : `You can restore this task from Trash for ${snapshot.settings.trashRetentionDays} days. Move subtasks out before deleting a parent.`
                 }
                 destructive={!task.deletedAt}
                 action={async () => {
@@ -759,6 +823,7 @@ export function TaskDetail({
       </motion.aside>
       </SheetContent>
       </Sheet>
+      {completing && <DoneReasonDialog title={task.title} onCancel={() => setCompleting(false)} onConfirm={async reason => { await save(reason); setCompleting(false); }} />}
       {iconPicker && <IconPicker catalog={catalog} selected={task.icon} onClose={() => setIconPicker(false)} onSelect={id => { update("icon", id); setIconPicker(false); }} />}
       <Dialog open={!!viewer} onOpenChange={() => setViewer("")}>
         <DialogContent className="image-viewer">

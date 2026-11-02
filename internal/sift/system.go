@@ -21,13 +21,17 @@ import (
 )
 
 type UpdateInfo struct {
-	Current   string         `json:"current"`
-	Latest    string         `json:"latest"`
-	Available bool           `json:"available"`
-	URL       string         `json:"url"`
-	Error     string         `json:"error"`
-	CheckedAt time.Time      `json:"checkedAt"`
-	Assets    []ReleaseAsset `json:"-"`
+	Current   string    `json:"current"`
+	Latest    string    `json:"latest"`
+	Available bool      `json:"available"`
+	URL       string    `json:"url"`
+	Error     string    `json:"error"`
+	CheckedAt time.Time `json:"checkedAt"`
+	// Installed is a version already written over this executable that only
+	// takes effect after a restart; it survives later checks until then.
+	Installed       string         `json:"installed,omitempty"`
+	RestartRequired bool           `json:"restartRequired"`
+	Assets          []ReleaseAsset `json:"-"`
 }
 type ReleaseAsset struct {
 	Name string `json:"name"`
@@ -35,6 +39,7 @@ type ReleaseAsset struct {
 }
 
 func (s *Service) CheckUpdate(ctx context.Context) UpdateInfo {
+	reportProgress(ctx, "Checking stable Sift releases on GitHub", 0, 0, "")
 	s.updateMu.Lock()
 	defer s.updateMu.Unlock()
 	info := UpdateInfo{Current: Version, CheckedAt: time.Now()}
@@ -69,6 +74,7 @@ func (s *Service) CheckUpdate(ctx context.Context) UpdateInfo {
 			}
 		}
 	}
+	info.Installed, info.RestartRequired = s.update.Installed, s.update.RestartRequired
 	s.update = info
 	return info
 }
@@ -134,7 +140,7 @@ func downloadRelease(ctx context.Context, url string, limit int64) ([]byte, erro
 	if r.StatusCode != 200 {
 		return nil, fmt.Errorf("Download failed: HTTP %d", r.StatusCode)
 	}
-	b, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
+	b, err := io.ReadAll(&progressReader{reader: io.LimitReader(r.Body, limit+1), ctx: ctx, message: "Downloading release file", total: r.ContentLength})
 	if int64(len(b)) > limit {
 		return nil, invalid("Release exceeds download limit")
 	}
@@ -161,6 +167,7 @@ func (s *Service) ApplyUpdate(ctx context.Context) (map[string]any, error) {
 	if asset == "" || checks == "" {
 		return nil, invalid("Release lacks this platform's binary or checksums.txt")
 	}
+	reportProgress(ctx, "Downloading release checksums", 0, 0, "")
 	sumFile, err := downloadRelease(ctx, checks, 1<<20)
 	if err != nil {
 		return nil, err
@@ -175,10 +182,12 @@ func (s *Service) ApplyUpdate(ctx context.Context) (map[string]any, error) {
 	if len(expected) != 64 {
 		return nil, invalid("No valid SHA-256 checksum for this asset")
 	}
+	reportProgress(ctx, "Downloading Sift for this computer", 0, 0, "")
 	archive, err := downloadRelease(ctx, asset, 800<<20)
 	if err != nil {
 		return nil, err
 	}
+	reportProgress(ctx, "Verifying release checksum and extracting executable", 0, 0, "")
 	sum := sha256.Sum256(archive)
 	if hex.EncodeToString(sum[:]) != expected {
 		return nil, invalid("Release checksum does not match; installation refused")
@@ -214,14 +223,21 @@ func (s *Service) ApplyUpdate(ctx context.Context) (map[string]any, error) {
 		return nil, err
 	}
 	defer release()
-	if _, err = s.backupLocked(); err != nil {
+	if _, err = s.backupLockedContext(ctx); err != nil {
 		return nil, fmt.Errorf("Pre-update backup failed: %w", err)
 	}
 	exe, err := os.Executable()
 	if err != nil {
 		return nil, err
 	}
-	return installUpdate(ctx, exe, info.Latest, executable)
+	reportProgress(ctx, "Validating and installing Sift; restart is required afterward", 0, 0, "")
+	result, err := installUpdate(ctx, exe, info.Latest, executable)
+	if err == nil {
+		s.updateMu.Lock()
+		s.update.Installed, s.update.RestartRequired = info.Latest, true
+		s.updateMu.Unlock()
+	}
+	return result, err
 }
 
 // The replacement transaction takes an explicit executable path so it can also
@@ -262,12 +278,16 @@ func installUpdate(ctx context.Context, exe, version string, executable []byte) 
 	return map[string]any{"installed": version, "restartRequired": true}, nil
 }
 func (s *Service) Backup() (string, error) {
+	return s.backupContext(s.ctx)
+}
+func (s *Service) backupContext(ctx context.Context) (string, error) {
+	reportProgress(ctx, "Preparing consistent backup; checking active jobs", 0, 0, "")
 	release, err := s.beginMaintenance()
 	if err != nil {
 		return "", err
 	}
 	defer release()
-	return s.backupLocked()
+	return s.backupLockedContext(ctx)
 }
 func (s *Store) SnapshotUnlocked() map[string]any {
 	out := map[string]any{"cursor": s.Latest(), "version": Version}

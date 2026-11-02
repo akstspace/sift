@@ -5,8 +5,8 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "cn";
 import { IconLayoutSidebar as PanelLeftIcon } from "@tabler/icons-react";
 import { Slot } from "radix-ui";
-import { motion, useReducedMotion } from "motion/react";
-import { shellSpring } from "../../motion";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { leave, settle, shellSpring } from "../../motion";
 
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -190,38 +190,56 @@ function Sidebar({
   }
 
   if (isMobile) {
+    // The drawer slides out from the screen edge and back, over a fading scrim.
+    // It is mounted only while open, so Motion can play the exit before Radix
+    // removes it; a soft shadow, not a hard border, separates it from the page.
     return (
-      <Sheet open={openMobile} onOpenChange={setOpenMobile}>
-        <SheetContent
-          data-sidebar="sidebar"
-          data-slot="sidebar"
-          data-mobile="true"
-          className={cn(
-            "w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden",
-            className,
-          )}
-          style={
-            {
-              "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
-            } as React.CSSProperties
-          }
-          side={side}
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            document
-              .querySelector<HTMLButtonElement>('[data-sidebar="trigger"]')
-              ?.focus();
-          }}
-        >
-          <SheetHeader className="sr-only">
-            <SheetTitle>Workspace navigation</SheetTitle>
-            <SheetDescription>
-              Your tasks, projects, agents, and settings.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
-        </SheetContent>
-      </Sheet>
+      <AnimatePresence>
+        {openMobile && (
+          <Sheet open onOpenChange={setOpenMobile}>
+            <SheetContent
+              asChild
+              forceMount
+              overlayClassName="sidebar-scrim"
+              overlay={<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: reduced ? 0.1 : 0.24 } }} exit={{ opacity: 0, transition: { duration: reduced ? 0.08 : 0.2 } }} />}
+              side={side}
+              // Class conflicts (the Sheet's edge border and width) resolve here, before Slot merges onto the drawer.
+              className={cn(
+                "w-(--sidebar-width) border-0 bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden",
+                className,
+              )}
+              style={
+                {
+                  "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
+                } as React.CSSProperties
+              }
+              onCloseAutoFocus={(event) => {
+                event.preventDefault();
+                document
+                  .querySelector<HTMLButtonElement>('[data-sidebar="trigger"]')
+                  ?.focus();
+              }}
+            >
+              <motion.div
+                data-sidebar="sidebar"
+                data-slot="sidebar"
+                data-mobile="true"
+                initial={reduced ? { opacity: 0 } : { x: side === "left" ? "-100%" : "100%" }}
+                animate={reduced ? { opacity: 1, transition: { duration: 0.12 } } : { x: 0, transition: { duration: 0.36, ease: settle } }}
+                exit={reduced ? { opacity: 0, transition: { duration: 0.08 } } : { x: side === "left" ? "-100%" : "100%", transition: { duration: 0.22, ease: leave } }}
+              >
+                <SheetHeader className="sr-only">
+                  <SheetTitle>Workspace navigation</SheetTitle>
+                  <SheetDescription>
+                    Your tasks, projects, agents, and settings.
+                  </SheetDescription>
+                </SheetHeader>
+                <div className="flex h-full w-full flex-col">{children}</div>
+              </motion.div>
+            </SheetContent>
+          </Sheet>
+        )}
+      </AnimatePresence>
     );
   }
 

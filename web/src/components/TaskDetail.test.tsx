@@ -33,6 +33,64 @@ const save = () => screen.getByRole("button", { name: "Save changes" });
 const editTitle = () => fireEvent.click(screen.getByRole("button", { name: "Edit task title" }));
 
 describe("task sheet read, draft, and save contracts", () => {
+  it("asks for a Done reason on save, preserves the draft on cancel, and retries a failed completion", async () => {
+    const { props, user } = mount();
+    await user.click(screen.getByRole("combobox", { name: "Status" })); await user.click(screen.getByRole("option", { name: "Done" }));
+    await user.click(save()); expect(props.onSave).not.toHaveBeenCalled();
+    await user.click(within(screen.getByRole("dialog", { name: "Mark task Done" })).getByRole("button", { name: "Cancel" }));
+    expect(props.onClose).not.toHaveBeenCalled(); expect(screen.getByRole("combobox", { name: "Status" }).textContent).toBe("Done");
+    await user.click(save()); await user.type(screen.getByRole("textbox", { name: "Done reason" }), "Checked the delivered work");
+    props.onSave.mockRejectedValueOnce(Error("Active subtasks remain"));
+    await user.click(screen.getByRole("button", { name: "Mark Done" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("Active subtasks remain");
+    await user.click(screen.getByRole("button", { name: "Mark Done" }));
+    await waitFor(() => expect(props.onClose).toHaveBeenCalledOnce());
+    expect(props.onSave).toHaveBeenLastCalledWith(expect.objectContaining({ status: "done" }), "Checked the delivered work");
+  });
+  it("asks for a reason when creating directly in Done but not editing an already completed task", async () => {
+    const fresh = newTask(); fresh.status = "done";
+    const view = mount(fresh); await view.user.type(screen.getByRole("textbox", { name: "Task title" }), "Already completed");
+    await view.user.click(screen.getByRole("button", { name: "Create task" }));
+    expect(view.props.onSave).not.toHaveBeenCalled();
+    await view.user.type(screen.getByRole("textbox", { name: "Done reason" }), "Finished before recording");
+    await view.user.click(screen.getByRole("button", { name: "Mark Done" }));
+    await waitFor(() => expect(view.props.onClose).toHaveBeenCalledOnce()); view.unmount();
+    const done = mount(taskFixture({ status: "done" })); await done.user.click(save());
+    expect(done.props.onSave).toHaveBeenCalledOnce(); expect(screen.queryByRole("dialog", { name: "Mark task Done" })).toBeNull();
+  });
+  it("posts a comment without saving task edits and renders it as safe attributed activity without Undo", async () => {
+    const { props, user } = mount(); editTitle();
+    await user.type(screen.getByRole("textbox", { name: "Task title" }), " unsaved");
+    const comment = screen.getByRole("textbox", { name: "Add a comment" });
+    await user.type(comment, "<script>not executable</script>\nA useful update");
+    apiMock.mockImplementation(async path => path.endsWith("/comments") ? { id: 42, kind: "comment", entityId: props.initial.id, actor: "user", reason: "<script>not executable</script>\nA useful update", at: "2026-11-02T12:00:00Z" } : path.includes("duplicates") ? [] : { history: [] });
+    fireEvent.keyDown(comment, { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect((comment as HTMLTextAreaElement).value).toBe(""));
+    expect(apiMock).toHaveBeenCalledWith("/tasks/tsk_test/comments", "POST", { text: "<script>not executable</script>\nA useful update", requestId: expect.any(String) });
+    expect(props.onSave).not.toHaveBeenCalled(); expect(props.onClose).not.toHaveBeenCalled();
+    const activity = screen.getByRole("list", { name: "Task activity" });
+    expect(activity.textContent).toContain("You"); expect(activity.textContent).toContain("A useful update"); expect(activity.querySelector("script")).toBeNull();
+    expect(within(activity).queryByRole("button", { name: "Undo history entry 42" })).toBeNull();
+    expect((screen.getByRole("textbox", { name: "Task title" }) as HTMLTextAreaElement).value).toContain("unsaved");
+  });
+  it("preserves a failed comment and reuses its request ID on retry, protecting unposted comments", async () => {
+    const { props, user } = mount(); const input = screen.getByRole("textbox", { name: "Add a comment" });
+    expect((screen.getByRole("button", { name: "Post comment" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true }); expect(props.onSave).not.toHaveBeenCalled();
+    await user.type(input, "Context to retain");
+    await user.click(save()); expect((await screen.findByRole("alert")).textContent).toContain("Post or clear"); expect(props.onSave).not.toHaveBeenCalled();
+    apiMock.mockImplementation(async path => { if (path.endsWith("/comments")) throw Error("Connection lost"); return path.includes("duplicates") ? [] : { history: [] }; });
+    await user.click(screen.getByRole("button", { name: "Post comment" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("Connection lost"); expect((input as HTMLTextAreaElement).value).toBe("Context to retain");
+    const first = apiMock.mock.calls.find(([path]) => path.endsWith("/comments"))![2];
+    await user.click(screen.getByRole("button", { name: "Cancel" })); expect(screen.getByRole("alertdialog")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Keep editing" }));
+    const pending = deferred<HistoryEntry>(); apiMock.mockImplementation(async path => path.endsWith("/comments") ? pending.promise : path.includes("duplicates") ? [] : { history: [] });
+    fireEvent.click(screen.getByRole("button", { name: "Post comment" })); fireEvent.keyDown(input, { key: "Enter", metaKey: true });
+    expect(apiMock.mock.calls.filter(([path]) => path.endsWith("/comments"))).toHaveLength(2);
+    expect(apiMock.mock.calls.filter(([path]) => path.endsWith("/comments"))[1][2]).toEqual(first);
+    await act(async () => pending.resolve({ id: 5, kind: "comment", actor: "user", entityId: props.initial.id, reason: "Context to retain", at: "" }));
+  });
   it("dismisses an unchanged sheet from its backdrop and retains the selected archived project", async () => {
     preference.reduced = true;
     const { props, user } = mount(taskFixture({ project: "archived" }), { projects: [{ id: "archived", name: "Archived reference", color: "sea", icon: "folder", archived: true }, { id: "other", name: "Hidden archive", color: "sea", icon: "folder", archived: true }] });
@@ -135,6 +193,36 @@ describe("task sheet read, draft, and save contracts", () => {
     await user.click(save());
     const saved = props.onSave.mock.calls[0][0];
     expect(saved.tags).toEqual([]); expect(saved.checklist.map(c => [c.title, c.done])).toEqual([["Renamed step", true], ["Added by Enter", false], ["Added by button", false]]);
+  });
+  it("creates a tag where it is used, reuses same-named tags, and keeps archived tags only where applied", async () => {
+    const task = taskFixture({ tags: ["tag_old"] });
+    const { props, user } = mount(task, { tags: [{ id: "tag_1", name: "Research", color: "blue", archived: false, icon: "tag" }, { id: "tag_old", name: "Legacy", color: "slate", archived: true, icon: "tag" }, { id: "tag_hidden", name: "Hidden", color: "slate", archived: true, icon: "tag" }] });
+    expect(screen.getByRole("button", { name: "Legacy" })).toBeDefined(); expect(screen.queryByRole("button", { name: "Hidden" })).toBeNull();
+    const input = screen.getByRole("textbox", { name: "New tag name" }), add = within(input.parentElement!).getByRole("button", { name: "Add" });
+    expect((add as HTMLButtonElement).disabled).toBe(true);
+    await user.type(input, " research {Enter}");
+    expect(apiMock).not.toHaveBeenCalledWith("/tags", "POST", expect.anything()); expect((input as HTMLInputElement).value).toBe("");
+    apiMock.mockImplementation(async (path, method) => path === "/tags" && method === "POST" ? { id: "tag_new", name: "Waiting", color: "slate", archived: false, icon: "tag" } : path.includes("duplicates") ? [] : { history: [] });
+    await user.type(input, "Waiting"); await user.click(add);
+    await waitFor(() => expect(props.refresh).toHaveBeenCalledOnce());
+    expect(apiMock).toHaveBeenCalledWith("/tags", "POST", { id: "", name: "Waiting", color: "slate", icon: "tag", archived: false });
+    await user.click(save());
+    expect(props.onSave.mock.calls[0][0].tags).toEqual(["tag_old", "tag_1", "tag_new"]);
+  });
+  it("keeps a typed tag recoverable when creation fails or the task is saved first", async () => {
+    const { props, user } = mount();
+    expect(screen.getByRole("textbox", { name: "New tag name" }).getAttribute("placeholder")).toBe("Add the first tag…");
+    const input = screen.getByRole("textbox", { name: "New tag name" });
+    await user.type(input, "Blocked");
+    await user.click(save()); expect(props.onSave).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert").textContent).toBe("Add or clear the new tag before saving task changes.");
+    const pending = deferred<unknown>(); apiMock.mockImplementation(async (path, method) => path === "/tags" && method === "POST" ? pending.promise : path.includes("duplicates") ? [] : { history: [] });
+    fireEvent.keyDown(input, { key: "Enter" }); fireEvent.keyDown(input, { key: "Enter" });
+    expect(apiMock.mock.calls.filter(([path]) => path === "/tags")).toHaveLength(1);
+    expect(screen.getByText("Adding")).toBeDefined();
+    await act(async () => pending.reject(new Error("Tag name already used")));
+    expect((await screen.findByRole("alert")).textContent).toBe("Tag name already used");
+    expect((input as HTMLInputElement).value).toBe("Blocked");
   });
   it("opens real subtasks/parents and never offers a second child level", async () => {
     const parent = taskFixture(), child = taskFixture({ id: "tsk_child", title: "Child", parentId: parent.id, status: "done" });

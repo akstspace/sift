@@ -21,6 +21,61 @@ autostart when a CLI command cannot connect. `sift help` documents commands;
 `sift schema` provides live fields/rules. Agent attribution is not proof of
 identity: local programs with the token can submit attributed changes.
 
+## CLI progress and following runs
+
+Commands keep their final JSON on stdout. `--progress auto|always|never` controls
+append-only progress on stderr: `auto` (the default) enables it only when stderr
+is a terminal, `always` also works in captured logs, and `never` disables it.
+`--quiet` suppresses progress regardless of the mode; results and errors remain.
+Backups, update checks/downloads/installation, model discovery, and image uploads
+report real stages, image counts, or transferred bytes when available. Upload
+counts describe the multipart request, not proof that an image has been saved.
+Elapsed waiting continues while an operation is busy; no percentage or ETA is
+invented. Discovery does not execute an AI task.
+
+```sh
+sift backup --progress=always > backup.json
+sift runs watch RUN_ID --progress=always > run.json
+sift jobs run JOB_ID --wait --progress=always > run.json
+```
+
+`runs watch` is read-only. `jobs run --wait` submits once, then follows the exact
+returned run. Status changes and new transcript entries appear on stderr; the
+final run record goes to stdout. Activity is read in cursor-based pages of up to
+500 entries, without the transcript endpoint's 20,000-entry cap or duplicate
+printing between polls. Individual requests are bounded, but following is not
+limited to a short request timeout. Unsuccessful terminal states (including
+action-needed and interrupted) return the final JSON and a nonzero exit status.
+Ctrl+C stops following, not the run. To stop the job deliberately, use
+`sift runs cancel RUN_ID`. You can resume following with `runs watch`.
+
+Progress-enabled operations negotiate `application/x-ndjson` on the same
+authenticated request, with progress frames and one final result/error frame.
+Ordinary UI/API clients and older services retain JSON responses. Broken or
+unknown streams are errors, never permission to replay a mutation. Cancellation
+is propagated to long operations, but effects already committed are not undone.
+After a lost submission response or failed stream/output, inspect history or
+backups before an explicit retry. There are no automatic whole-operation retries.
+
+## Projects navigation
+
+The sidebar has one **Projects** destination, not individual project shortcuts.
+Open it to create or manage projects, or select a project to open its scoped
+Kanban board; the project's name carries into the board heading. **All
+projects** returns to the project list. Projects are listed by name. Archived
+projects remain available through **Show archived**; archiving a project does
+not delete or unassign its tasks.
+
+Tags are labels and filters, not a destination. Add a tag from any task's Tags
+field (typing an existing name reuses that tag), filter any board by tag from
+**Filters**, and rename, merge, or archive tags under **Settings → Tags**.
+Agents keep using `sift tags ...` and `--tag` as before.
+
+Project selection clears task search and filters and starts in Board view,
+even when Today or All tasks uses List view. Switching a project to List is
+local to that visit and does not change the saved workspace preference. New
+tasks on a project board start assigned to that project.
+
 ## Due dates and completed-task archive
 
 All tasks replaces the Backlog label. Due dates are optional civil dates in
@@ -42,6 +97,45 @@ completed parent, with linked undo history. A completed parent waits until its
 remaining visible children are eligible before archiving. Archive changes are
 revision-checked and undoable; undoing only the archive leaves the original
 completion time, so an eligible Done task can archive again on maintenance.
+
+## Comments, completion reasons, and transcripts
+
+Open a saved task and use **Add a comment** in Activity, then **Post comment**
+(or Cmd/Ctrl+Enter in the comment field). Comments are plain text, limited to
+10,000 characters, and retain their author and time in task history and backups.
+Posting is independent of task edits: it does not change the task's revision or
+overwrite a draft, and it does not invalidate Undo for a task change. Unposted
+comments are protected when navigating away. Restore deleted tasks or open the
+survivor of a merge before commenting. Comments are not editable or undoable.
+
+Agents can read the same comments with `sift tasks comments TASK_ID`, and post
+with `sift tasks comment TASK_ID --text "Update" --actor "agent-name"
+--request-id "unique-operation-id"`. Comment text is returned in the event's
+`reason` field, with `actor`, `at`, and `kind: "comment"`. The read command returns
+up to 1,000 comments in ascending event-ID order; continue with `--after LAST_ID`
+until an empty page. `sift tasks get` and `sift history` also include comment
+activity. Posting needs no task revision and never changes one. The schema,
+scheduled-job guidance, and shipped skill document this workflow. Comments are
+context, not permission for unrelated actions; agent attribution cannot claim
+to be `user`.
+
+Marking a task Done asks for a nonblank **Done reason** before saving. This applies
+to board completion buttons, subtasks, list status menus, drag-and-drop into Done,
+task-detail status changes, and tasks created directly in Done. Cancelling leaves
+the task unchanged; failed saves retain the reason for correction or retry.
+The reason is recorded with the completion in history, and existing task Undo
+still applies. Editing an already completed task does not require another reason.
+CLI/API completion also requires a reason (`--reason "What was addressed"`).
+
+Run history keeps the run header and controls visible while the transcript
+scrolls independently. Focus the transcript and use Page Up/Down or the arrow
+keys to scroll. Polling preserves reading position rather than auto-following;
+selecting a different run starts at the top.
+
+Scheduled-agent guidance selects icons for the work itself, not the app where
+it was discovered. Brand icons are only appropriate for tasks about that service;
+uncertain choices should omit the icon or use `circle-check`. This does not
+rewrite existing icons or silently replace an installed skill.
 
 ## Scheduler and Pi
 
@@ -72,9 +166,21 @@ maps to the next valid local instant. Intervals use elapsed durations.
 An update check reads only the stable release endpoint for `akstspace/sift`
 over GitHub HTTPS. Applying is explicit, verifies the platform archive's SHA-256,
 checks the executable version, creates a backup under maintenance lock, and
-atomically replaces the executable. Restart is required. A missing repository,
+atomically replaces the executable. Restart is required.
+
+When a newer stable release is known, an **Update available** control appears
+to the left of search. It installs the update (same verification and backup as
+above) and then offers **Restart now**. Restart waits for running agents and
+maintenance, shuts Sift down gracefully (live streams, storage, data lock), and
+re-executes the installed binary in place with the same arguments and process ID,
+so a LaunchAgent or systemd unit keeps supervising it. The open page reloads when
+the new process answers. A Sift started from a terminal restarts the same way. A missing repository,
 release, asset, checksum, or failed validation is an actionable error, not success.
 No remote update success is claimed until a real release exists and is tested.
+This uses SHA-256 verification over GitHub HTTPS, not an independent signed-release
+trust system; it does not protect against compromise of the release account.
+The app keeps update guidance focused on user actions and backup/restart
+consequences. Connection paths and technical task metadata are available on demand.
 
 Settings' setup actions are opt-in. CLI installation makes a symlink in
 `~/.local/bin` and refuses an existing unrelated file. Skill installation writes

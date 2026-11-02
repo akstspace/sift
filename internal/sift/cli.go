@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -69,7 +70,7 @@ type arguments struct {
 
 func parseArgs(args []string) arguments {
 	a := arguments{Flags: map[string]string{}}
-	bools := map[string]bool{"today": true, "enabled": true, "json": true, "check": true, "yes": true}
+	bools := map[string]bool{"today": true, "enabled": true, "json": true, "check": true, "yes": true, "quiet": true, "wait": true}
 	for i := 0; i < len(args); i++ {
 		v := args[i]
 		if strings.HasPrefix(v, "--") {
@@ -127,11 +128,17 @@ func (c *localClient) request(ctx context.Context, method, path string, body any
 	req.Header.Set("X-Sift-Request", "1")
 	req.Header.Set("X-Sift-Actor", c.Actor)
 	req.Header.Set("Content-Type", "application/json")
+	if ctx.Value(progressKey{}) != nil {
+		req.Header.Set("Accept", progressMediaType)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("Local Sift service is unavailable; start sift serve: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < 400 && strings.Split(resp.Header.Get("Content-Type"), ";")[0] == progressMediaType {
+		return readOperation(ctx, resp.Body)
+	}
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -144,7 +151,15 @@ func (c *localClient) request(ctx context.Context, method, path string, body any
 	return b, nil
 }
 func CLI(ctx context.Context, args []string, out io.Writer) error {
+	return CLIWithProgress(ctx, args, out, os.Stderr)
+}
+
+func CLIWithProgress(ctx context.Context, args []string, out, progressOut io.Writer) (resultErr error) {
 	a := parseArgs(args)
+	enabled, err := progressEnabled(a.Flags["progress"], a.Flags["quiet"] == "true", progressOut)
+	if err != nil {
+		return err
+	}
 	dir := a.Flags["data"]
 	if dir == "" {
 		dir = DataDir()
@@ -168,6 +183,8 @@ serve [--port 57431]               Start loopback service and scheduler
   --address 127.0.0.1:PORT is also supported (mutually exclusive with --port).
 tasks list|search QUERY|tree       Inspect tasks (JSON)
 tasks get ID                      Task, current revision, history, potential duplicates
+tasks comments ID [--after EVENT_ID] Read comments (JSON; up to 1,000 per page)
+tasks comment ID --text TEXT       Post a comment [--request-id KEY]
 tasks duplicates --title TITLE   Find potential duplicates before creating
 tasks add --title TITLE [--today] [--parent ID] [--source-key KEY]
           [--due-date YYYY-MM-DD]  Optional deadline (empty value clears it on update)
@@ -181,13 +198,19 @@ projects|tags list|add|update      --name NAME [--id ID] [--color COLOR]
 icons search QUERY                Offline searchable icon catalog
 images upload PATH                Upload local PNG/JPEG/WebP/GIF (20 MB)
 jobs list|add|update|run|reset      Job creation/update uses --file JOB.json
+jobs run ID --wait                 Start once and follow this run to completion
 runs list|get ID|cancel ID         Live run history and control
+runs watch ID                      Follow run status and new activity (read-only)
 models list                       Discover configured models using local Pi RPC
 schema                            JSON schema and task rules
-history TASK_ID                   Task attribution/history
+history TASK_ID                   Task activity, including comments and attribution
 undo EVENT_ID                     Undo a task change if no newer edits exist
 backup                            Create consistent full local backup
 update [--check]                   Check/apply stable akstspace/sift release
+
+Progress: --progress auto|always|never (default: auto on a terminal).
+  Live status/stages and elapsed waiting go to stderr; stdout stays JSON.
+  --quiet suppresses progress. Ctrl+C stops waiting, not an already-started run.
 
 No silent daemon autostart, automatic duplicate merging, or model fallback.`)
 		return nil
@@ -197,7 +220,14 @@ No silent daemon autostart, automatic duplicate merging, or model fallback.`)
 		if err != nil {
 			return err
 		}
-		return Serve(ctx, dir, address)
+		if err = serve(ctx, dir, address); errors.Is(err, ErrRestart) {
+			// Serve has released the port, storage, and data lock. Replace this
+			// process with the (possibly updated) executable, keeping its PID so
+			// launchd or systemd continue to supervise it.
+			fmt.Fprintln(out, "Restarting Sift")
+			return restartProcess()
+		}
+		return err
 	}
 	c, err := clientFor(dir, a.Flags["actor"])
 	if err != nil {
@@ -213,6 +243,46 @@ No silent daemon autostart, automatic duplicate merging, or model fallback.`)
 		return ""
 	}
 	sub := get(1)
+	if a.Flags["wait"] == "true" && (pos[0] != "jobs" || sub != "run") {
+		return invalid("--wait is supported with sift jobs run ID")
+	}
+	watch := pos[0] == "runs" && sub == "watch"
+	if (watch || pos[0] == "jobs" && sub == "run") && get(2) == "" {
+		return invalid("A job or run ID is required")
+	}
+	if enabled {
+		label := "Waiting for Sift"
+		switch pos[0] {
+		case "backup":
+			label = "Creating workspace backup"
+		case "update":
+			label = "Checking Sift release"
+		case "models":
+			label = "Discovering Pi models (no AI task is run)"
+		case "images":
+			label = "Uploading local image"
+		case "runs":
+			label = "Reading run activity"
+		case "jobs":
+			label = "Submitting job request"
+		}
+		var progress *cliProgress
+		progress, ctx = startCLIProgress(ctx, progressOut, label, time.Second)
+		defer func() {
+			if progressErr := progress.finish(resultErr); resultErr == nil {
+				resultErr = progressErr
+			}
+		}()
+	}
+	if watch {
+		b, watchErr := c.watchRun(ctx, get(2), 500*time.Millisecond)
+		if len(b) != 0 {
+			if _, err := fmt.Fprintln(out, string(b)); err != nil {
+				return err
+			}
+		}
+		return watchErr
+	}
 	switch pos[0] {
 	case "schema":
 		path = "/api/schema"
@@ -230,6 +300,17 @@ No silent daemon autostart, automatic duplicate merging, or model fallback.`)
 			path = "/api/tasks?q=" + url.QueryEscape(strings.Join(pos[min(2, len(pos)):], " "))
 		case "get":
 			path = "/api/tasks/" + url.PathEscape(get(2))
+		case "comments", "comment":
+			if get(2) == "" {
+				return invalid("A task ID is required; use sift tasks comments ID or sift tasks comment ID --text TEXT")
+			}
+			path = "/api/tasks/" + url.PathEscape(get(2)) + "/comments"
+			if sub == "comment" {
+				method = "POST"
+				body = map[string]string{"text": a.Flags["text"], "requestId": a.Flags["request-id"]}
+			} else {
+				path += "?after=" + url.QueryEscape(a.Flags["after"])
+			}
 		case "duplicates":
 			path = "/api/tasks/duplicates?title=" + url.QueryEscape(a.Flags["title"]) + "&id=" + url.QueryEscape(a.Flags["id"]) + "&project=" + url.QueryEscape(a.Flags["project"]) + "&sourceKey=" + url.QueryEscape(a.Flags["source-key"]) + "&source=" + url.QueryEscape(a.Flags["source"])
 		case "add", "update":
@@ -364,7 +445,10 @@ No silent daemon autostart, automatic duplicate merging, or model fallback.`)
 			return e
 		}
 		_ = writer.Close()
-		req, _ := http.NewRequestWithContext(ctx, "POST", c.URL+"/api/images", &buf)
+		uploadCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+		defer cancel()
+		req, _ := http.NewRequestWithContext(uploadCtx, "POST", c.URL+"/api/images", &buf)
+		req.Body = io.NopCloser(&progressReader{reader: bytes.NewReader(buf.Bytes()), ctx: ctx, message: "Uploading image request", total: int64(buf.Len())})
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 		req.Header.Set("X-Sift-Request", "1")
@@ -391,10 +475,29 @@ No silent daemon autostart, automatic duplicate merging, or model fallback.`)
 	if pos[0] == "update" || pos[0] == "backup" {
 		timeout = 10 * time.Minute
 	}
+	watchCtx := ctx
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	b, err := c.request(ctx, method, path, body)
 	if err != nil {
+		return err
+	}
+	if pos[0] == "jobs" && sub == "run" && a.Flags["wait"] == "true" {
+		var run Run
+		if err = json.Unmarshal(b, &run); err != nil {
+			return err
+		}
+		if run.ID == "" {
+			return invalid("Job response has no run ID; inspect run history before retrying")
+		}
+		// The submission timeout must not truncate a legitimate long-running job.
+		// Follow uses the caller's context, independent of the short request timeout.
+		b, err = c.watchRun(watchCtx, run.ID, 500*time.Millisecond)
+		if len(b) != 0 {
+			if _, writeErr := fmt.Fprintln(out, string(b)); writeErr != nil {
+				return writeErr
+			}
+		}
 		return err
 	}
 	var pretty bytes.Buffer
