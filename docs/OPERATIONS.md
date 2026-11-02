@@ -58,7 +58,9 @@ Settings' setup actions are opt-in. CLI installation makes a symlink in
 `~/.local/bin` and refuses an existing unrelated file. Skill installation writes
 only `~/.agents/skills/sift/SKILL.md`, asking before replacing different content.
 Startup writes a macOS LaunchAgent or Linux user-systemd unit; it does not edit
-shell profiles. Startup behavior must be tested on the actual target OS.
+shell profiles. The separate download installer adds its bin directory to shell
+PATH by default; `--no-modify-path` opts out. Startup behavior must be tested on
+the actual target OS.
 
 ## Development workspaces
 
