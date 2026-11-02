@@ -122,19 +122,20 @@ and as the release workflow's reusable verification gate. Actions are pinned to
 commit SHAs; ordinary jobs have read-only contents permission and do not retain
 checkout credentials. It runs:
 
-- Frontend production build and unchanged 100% statement/branch/function/line gates.
+- Frontend production build and 95% statement/branch/function/line gates.
 - Hermetic installer/version tests, actionlint, OpenGrep, and Trivy.
 - Native macOS arm64, Linux arm64, and Linux amd64 package builds; full uncached
   `SIFT_INTEGRATION=1 go test -race ... ./...`, `go vet`, raw coverage reports,
   architecture/payload/notice/checksum inspection, and real native package smoke.
 - Downloadable coverage, security, package, and native smoke artifacts.
 
-Backend coverage has a strict **100% statement gate**, without application
-exclusions. `python3 scripts/backend-coverage.py --require 100` retains the raw,
-JSON/source-hash and HTML evidence, then fails if any application statement is
-uncovered. The current local profile is below that target, so CI/release is
-intentionally blocked; reporting a rounded percentage is not a pass. Native
-GitHub runner jobs are defined gates, not evidence of execution before publication.
+Backend coverage has a **95% statement gate**, without application exclusions,
+as selected by the owner. `python3 scripts/backend-coverage.py --require 95`
+retains the raw, JSON/source-hash and HTML evidence, then fails below the exact
+threshold without rounding. The recorded 98.52% local profile passes this gate;
+the 41 uncovered statements remain in its reports. `--require 100` remains
+available for stricter local checks. Frontend coverage requires 95% on all four
+metrics. Native GitHub runner definitions are not evidence of successful execution.
 
 The separate scheduled dependency audit reruns weekly with a fresh vulnerability
 database. Dependabot proposes npm, Go, and action updates; scanners and rules are

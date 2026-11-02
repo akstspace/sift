@@ -29,7 +29,7 @@ all **52 application TypeScript/TSX files**:
 
 Scope is `web/src/**/*.{ts,tsx}` excluding tests, test setup/fixtures, and type
 declarations, not a hand-picked subset of components. The strict command sets
-all four thresholds to 100%; it has not been weakened. Coverage is execution
+all four thresholds to 95%, as selected by the owner. Coverage is execution
 evidence, not proof that every possible user action is correct.
 
 ```sh
@@ -173,8 +173,8 @@ The latest complete passing macOS arm64 run records:
 | Application backend (`internal/sift`) | 2,724 / 2,765 | 98.52% |
 | Combined Go application | 2,729 / 2,770 | 98.52% |
 
-The application backend is **not at 100%**, so application-wide 100% coverage
-remains an unmet requirement. Go reports statements, not frontend branch or
+The owner selected **95%** as the backend statement coverage gate; this recorded
+**98.52%** passes that threshold. It is not 100% coverage. Go reports statements, not frontend branch or
 function coverage. The unmodified local raw profile
 `docs/verification/backend-coverage.out`, `backend-coverage.json` source hashes,
 and `backend-coverage.html` preserve the measured scope. No
@@ -189,9 +189,10 @@ process, and platform-specific startup paths. Some guard failures are unreachabl
 payloads or valid configurations. These gaps remain visible rather than being
 removed merely to improve the percentage.
 
-The strict local `python3 scripts/backend-coverage.py --require 100` command
-returns nonzero against this profile, after writing its evidence. The complete
-race/integration suite itself passes; the additional coverage gate does not.
+The CI command `python3 scripts/backend-coverage.py --require 95` passes this
+profile and retains its uncovered statements. The optional stricter local
+`--require 100` command still returns nonzero after writing its evidence.
+The complete race/integration suite itself passes.
 
 Tests include concurrent revision winners, source-key and request replay,
 hierarchy/linked undo, merge validation, history preservation, SQL write
@@ -321,7 +322,7 @@ this prevents clean checkouts from failing on absent QA helpers without weakenin
 stale-review checks. See
 local `docs/verification/clean-source-security.json`.
 
-The hermetic Python suite passes **44 tests** covering installer safety/versioning,
+The hermetic Python suite passes **59 tests** covering installer safety/versioning,
 loopback credentials, release guards/draft-upload verification, scanner failure
 handling, exact/unexpired/stale reviews, scan completeness, dependency-report
 completeness, and all-target OpenPGP presence checks. Scanner wrappers preserve a
@@ -332,18 +333,17 @@ are also checked. All three workflow
 files pass actionlint; Go vet and Python parsing pass locally. Workflow definitions
 and mocked publication tests are not proof of a real GitHub run or remote install.
 
-CI now invokes the strict backend **100% statement gate** as well as the strict
+CI invokes the owner-selected backend **95% statement gate** and 95%
 frontend gates. A below-target backend profile fails CI/release after preserving
-its evidence; coverage is not merely reported as an informational check. The
-tooling tests verify full coverage passes, a single uncovered application statement
-fails with evidence retained, an empty profile cannot pass, and report-only mode
-does not imply a gate pass.
+its evidence. Tooling tests verify the exact 95% boundary, refusal just below it
+even when display rounding reads 95.00%, the optional stricter 100% gate, empty
+profile refusal, and report-only mode without an implied gate pass.
 
 ## Verification scope
 
 The following checks are separate from the completed local verification above:
 
-- Backend/application-wide 100% coverage.
+- Backend coverage is measured at 98.52%; the selected CI threshold is 95%.
 - Official media-kit artwork and brand-owner trademark approval are not supplied
   or claimed. At the owner's direction, the app now uses MIT-licensed Tabler
   representations instead, including `brand-slack` and `brand-gmail`, with
