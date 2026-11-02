@@ -5,6 +5,7 @@ import { api } from "../api";
 import { deferred, snapshotFixture, TestProviders } from "../test/fixtures";
 import type { Snapshot } from "../types";
 import { Settings } from "./Settings";
+import { UPDATE_CHANGED } from "./UpdateNotice";
 
 vi.mock("../api", async original => ({ ...await original<typeof import("../api")>(), api: vi.fn() }));
 const mock = vi.mocked(api);
@@ -171,6 +172,19 @@ describe("deliberate settings and recovery", () => {
     expect(confirmation.textContent).not.toMatch(/binaries|checksum/);
     await user.click(screen.getByRole("button", { name: "Apply Sift update" }));
     expect(await screen.findByText("Update installed. Use Restart to update at the top of the window to finish.")).toBeDefined();
+  });
+  it("hands an installed update's restart to the notice and stops offering to apply it", async () => {
+    mock.mockImplementation(async path => path === "/health" ? health : path === "/backups" ? [] : path === "/update" ? { available: true, latest: "v0.2.0", url: "https://github.com/akstspace/sift/releases/tag/v0.2.0" } : path === "/update/apply" ? { installed: "v0.2.0", restartRequired: true, restarting: true } : {});
+    const changed = vi.fn(); window.addEventListener(UPDATE_CHANGED, changed);
+    const { user } = mount();
+    await user.click(await screen.findByRole("button", { name: "Apply v0.2.0" }));
+    expect(screen.getByRole("alertdialog").textContent).toContain("installs the update, and restarts");
+    await user.click(screen.getByRole("button", { name: "Apply Sift update" }));
+    expect(await screen.findByText("Update installed. Sift is restarting; this page reloads on its own.")).toBeDefined();
+    expect((changed.mock.calls[0][0] as CustomEvent).detail).toEqual({ restarting: true });
+    expect(screen.getByText(/Version v0.2.0 is installed/)).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Apply v0.2.0" })).toBeNull();
+    window.removeEventListener(UPDATE_CHANGED, changed);
   });
   it.each(["denied", "granted"])("requests notification permission only after opting in, permission=%s", async permission => {
     const requestPermission = vi.fn(async () => permission); vi.stubGlobal("Notification", { requestPermission });

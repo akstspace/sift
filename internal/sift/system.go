@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -75,8 +76,36 @@ func (s *Service) CheckUpdate(ctx context.Context) UpdateInfo {
 		}
 	}
 	info.Installed, info.RestartRequired = s.update.Installed, s.update.RestartRequired
+	if info.Available && info.Installed != info.Latest && s.replacedExecutableVersion(ctx) == strings.TrimPrefix(info.Latest, "v") {
+		info.Installed, info.RestartRequired = info.Latest, true
+	}
 	s.update = info
 	return info
+}
+
+// replacedExecutableVersion reports the version of the executable on disk when
+// it is no longer the file this process started from: an update installed by
+// an earlier process, the CLI, or an installer that only needs a restart. It
+// runs nothing while the file is unchanged.
+func (s *Service) replacedExecutableVersion(ctx context.Context) string {
+	if s.startedFrom == nil {
+		return ""
+	}
+	exe, err := executablePath()
+	if err != nil {
+		return ""
+	}
+	current, err := os.Stat(exe)
+	if err != nil || (os.SameFile(current, s.startedFrom) && current.Size() == s.startedFrom.Size() && current.ModTime().Equal(s.startedFrom.ModTime())) {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, exe, "version").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 func newerVersion(a, b string) bool {
 	var av, bv [3]int
@@ -124,32 +153,73 @@ func allowedReleaseRedirect(u *url.URL) bool {
 	}
 	return false
 }
+
+// Release downloads cross the network: a dropped connection or a brief GitHub
+// fault is retried before it is reported, as a GitHub problem (502), not a
+// fault in Sift.
+const releaseAttempts = 3
+
+var releaseRetryDelay = time.Second
+
 func downloadRelease(ctx context.Context, url string, limit int64) ([]byte, error) {
 	if !allowedReleaseURL(url) {
 		return nil, invalid("Release asset is outside akstspace/sift")
 	}
+	for attempt := 1; ; attempt++ {
+		b, retry, err := fetchRelease(ctx, url, limit)
+		if err == nil || !retry || attempt == releaseAttempts {
+			return b, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(releaseRetryDelay * time.Duration(attempt)):
+		}
+	}
+}
+func fetchRelease(ctx context.Context, url string, limit int64) (b []byte, retry bool, err error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	r, err := releaseClient().Do(req)
 	if err != nil {
-		return nil, err
+		var refused *APIError
+		if errors.As(err, &refused) || ctx.Err() != nil {
+			return nil, false, err
+		}
+		return nil, true, upstream(err, "Couldn’t reach GitHub to download the update: %v", err)
 	}
 	defer r.Body.Close()
 	if r.StatusCode != 200 {
-		return nil, fmt.Errorf("Download failed: HTTP %d", r.StatusCode)
+		transient := r.StatusCode >= 500 || r.StatusCode == http.StatusTooManyRequests
+		return nil, transient, upstream(nil, "GitHub returned HTTP %d for the update download; try again later", r.StatusCode)
 	}
-	b, err := io.ReadAll(&progressReader{reader: io.LimitReader(r.Body, limit+1), ctx: ctx, message: "Downloading release file", total: r.ContentLength})
+	b, err = io.ReadAll(&progressReader{reader: io.LimitReader(r.Body, limit+1), ctx: ctx, message: "Downloading release file", total: r.ContentLength})
 	if int64(len(b)) > limit {
-		return nil, invalid("Release exceeds download limit")
+		return nil, false, invalid("Release exceeds download limit")
 	}
-	return b, err
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, false, err
+		}
+		return nil, true, upstream(err, "The update download was interrupted: %v", err)
+	}
+	return b, false, nil
 }
 func (s *Service) ApplyUpdate(ctx context.Context) (map[string]any, error) {
 	info := s.CheckUpdate(ctx)
 	if info.Error != "" {
 		return nil, invalid("%s", info.Error)
+	}
+	if info.RestartRequired && info.Installed == info.Latest {
+		// Already on disk; only the restart is missing. Never download it again.
+		release, err := s.beginMaintenance()
+		if err != nil {
+			return nil, err
+		}
+		defer release()
+		return s.installed(ctx, info.Latest), nil
 	}
 	if !info.Available {
 		return nil, invalid("No newer stable release is available")
@@ -226,18 +296,30 @@ func (s *Service) ApplyUpdate(ctx context.Context) (map[string]any, error) {
 	if _, err = s.backupLockedContext(ctx); err != nil {
 		return nil, fmt.Errorf("Pre-update backup failed: %w", err)
 	}
-	exe, err := os.Executable()
+	exe, err := executablePath()
 	if err != nil {
 		return nil, err
 	}
-	reportProgress(ctx, "Validating and installing Sift; restart is required afterward", 0, 0, "")
-	result, err := installUpdate(ctx, exe, info.Latest, executable)
-	if err == nil {
-		s.updateMu.Lock()
-		s.update.Installed, s.update.RestartRequired = info.Latest, true
-		s.updateMu.Unlock()
+	reportProgress(ctx, "Validating and installing Sift", 0, 0, "")
+	if _, err = installUpdate(ctx, exe, info.Latest, executable); err != nil {
+		return nil, err
 	}
-	return result, err
+	s.updateMu.Lock()
+	s.update.Installed, s.update.RestartRequired = info.Latest, true
+	s.updateMu.Unlock()
+	return s.installed(ctx, info.Latest), nil
+}
+
+// installed describes an update on disk. While Sift is serving and idle (the
+// caller holds maintenance, so no agent is running), it also reserves the
+// restart that puts the update into use; the request handler then restarts.
+func (s *Service) installed(ctx context.Context, version string) map[string]any {
+	result := map[string]any{"installed": version, "restartRequired": true, "restarting": false}
+	if s.reserveRestart(true) == nil {
+		reportProgress(ctx, "Update installed; restarting Sift", 0, 0, "")
+		result["restarting"] = true
+	}
+	return result
 }
 
 // The replacement transaction takes an explicit executable path so it can also

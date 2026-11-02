@@ -180,11 +180,22 @@ type Duplicate struct {
 type APIError struct {
 	Status  int
 	Message string
+	// Err keeps the underlying cause inspectable with errors.Is/As.
+	Err error
 }
 
-func (e *APIError) Error() string              { return e.Message }
-func invalid(format string, args ...any) error { return &APIError{400, fmt.Sprintf(format, args...)} }
-func conflict(s string) error                  { return &APIError{409, s} }
+func (e *APIError) Error() string { return e.Message }
+func (e *APIError) Unwrap() error { return e.Err }
+func invalid(format string, args ...any) error {
+	return &APIError{Status: 400, Message: fmt.Sprintf(format, args...)}
+}
+func conflict(s string) error { return &APIError{Status: 409, Message: s} }
+
+// upstream reports a failure in a service Sift depends on (GitHub, the
+// network) as 502, so it isn't mistaken for a fault in Sift itself.
+func upstream(cause error, format string, args ...any) error {
+	return &APIError{Status: 502, Message: fmt.Sprintf(format, args...), Err: cause}
+}
 func newID(prefix string) string {
 	b := make([]byte, 10)
 	_, _ = rand.Read(b)

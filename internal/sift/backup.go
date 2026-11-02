@@ -45,7 +45,7 @@ func (s *Service) beginMaintenance() (func(), error) {
 		return nil, conflict("Workspace is busy; try maintenance again")
 	}
 	s.runMu.Lock()
-	if s.maintenance || len(s.active) != 0 {
+	if s.maintenance || s.restarting || len(s.active) != 0 {
 		s.runMu.Unlock()
 		s.dataMu.Unlock()
 		return nil, conflict("Wait for active jobs or maintenance to finish")

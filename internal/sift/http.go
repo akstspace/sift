@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -145,7 +146,16 @@ func apiError(w http.ResponseWriter, err error) {
 	if errors.As(err, &e) {
 		status = e.Status
 	}
+	logFailure(status, err)
 	writeJSON(w, status, map[string]any{"error": err.Error()})
+}
+
+// logFailure records server-side failures in the service log, so a browser
+// that only shows a status code still leaves the reason somewhere to inspect.
+func logFailure(status int, err error) {
+	if status >= 500 {
+		log.Printf("Request failed (%d): %v", status, err)
+	}
 }
 func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, 2<<20)
@@ -185,7 +195,7 @@ func (s *Service) routes() http.Handler {
 			defer cancel()
 			data, err := ProbePi(ctx, r.URL.Query().Get("provider"), r.URL.Query().Get("model"))
 			if err != nil {
-				return nil, &APIError{503, err.Error()}
+				return nil, &APIError{Status: 503, Message: err.Error()}
 			}
 			return data, nil
 		})
@@ -232,7 +242,7 @@ func (s *Service) routes() http.Handler {
 	mux.HandleFunc("GET /api/tasks/{id}", func(w http.ResponseWriter, r *http.Request) {
 		var t Task
 		if !s.Store.Get("task", r.PathValue("id"), &t) {
-			apiError(w, &APIError{404, "Task not found"})
+			apiError(w, &APIError{Status: 404, Message: "Task not found"})
 			return
 		}
 		writeJSON(w, 200, map[string]any{"task": t, "potentialDuplicates": s.Store.Duplicates(t), "history": s.Store.Events(0, t.ID, 2000)})
@@ -242,7 +252,7 @@ func (s *Service) routes() http.Handler {
 	mux.HandleFunc("GET /api/tasks/{id}/comments", func(w http.ResponseWriter, r *http.Request) {
 		var task Task
 		if !s.Store.Get("task", r.PathValue("id"), &task) {
-			apiError(w, &APIError{404, "Task not found"})
+			apiError(w, &APIError{Status: 404, Message: "Task not found"})
 			return
 		}
 		var after int64
@@ -376,7 +386,7 @@ func (s *Service) routes() http.Handler {
 	mux.HandleFunc("GET /api/runs/{id}/activity", func(w http.ResponseWriter, r *http.Request) {
 		var run Run
 		if !s.Store.Get("run", r.PathValue("id"), &run) {
-			apiError(w, &APIError{404, "Run not found"})
+			apiError(w, &APIError{Status: 404, Message: "Run not found"})
 			return
 		}
 		var after int64
@@ -455,7 +465,7 @@ func (s *Service) routes() http.Handler {
 		}
 		b, err := s.Storage.Read(r.Context(), id)
 		if err != nil {
-			apiError(w, &APIError{503, "Image storage unavailable"})
+			apiError(w, &APIError{Status: 503, Message: "Image storage unavailable"})
 			return
 		}
 		w.Header().Set("Content-Type", a.MIME)
@@ -509,18 +519,21 @@ func (s *Service) routes() http.Handler {
 		writeOperation(w, r, func(ctx context.Context) (any, error) { return s.CheckUpdate(ctx), nil })
 	})
 	mux.HandleFunc("POST /api/update/apply", func(w http.ResponseWriter, r *http.Request) {
-		writeOperation(w, r, func(ctx context.Context) (any, error) { return s.ApplyUpdate(ctx) })
+		// A successful install restarts Sift on its own once the response is
+		// sent, so the update is never left on disk behind an old process.
+		restarting := false
+		writeOperation(w, r, func(ctx context.Context) (any, error) {
+			result, err := s.ApplyUpdate(ctx)
+			restarting = err == nil && result["restarting"] == true
+			return result, err
+		})
+		if restarting {
+			s.restart()
+		}
 	})
 	mux.HandleFunc("POST /api/restart", func(w http.ResponseWriter, r *http.Request) {
-		if s.restart == nil {
-			apiError(w, invalid("Restart is available only while Sift is serving"))
-			return
-		}
-		s.runMu.Lock()
-		busy := s.maintenance || len(s.active) != 0
-		s.runMu.Unlock()
-		if busy {
-			apiError(w, conflict("Wait for running agents or maintenance to finish, then restart"))
+		if err := s.reserveRestart(false); err != nil {
+			apiError(w, err)
 			return
 		}
 		writeJSON(w, 202, map[string]bool{"restarting": true})
@@ -687,7 +700,7 @@ func (s *Service) streamEvents(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Service) saveColumn(w http.ResponseWriter, r *http.Request) {
 	if actorOf(r) != "user" {
-		apiError(w, &APIError{403, "Only the user can manage columns through the UI"})
+		apiError(w, &APIError{Status: 403, Message: "Only the user can manage columns through the UI"})
 		return
 	}
 	var c Column
@@ -710,7 +723,7 @@ func (s *Service) saveColumn(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Service) deleteColumn(w http.ResponseWriter, r *http.Request) {
 	if actorOf(r) != "user" {
-		apiError(w, &APIError{403, "Only the user can manage columns"})
+		apiError(w, &APIError{Status: 403, Message: "Only the user can manage columns"})
 		return
 	}
 	id := r.PathValue("id")

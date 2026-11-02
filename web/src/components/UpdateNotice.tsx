@@ -17,14 +17,19 @@ export interface UpdateStatus {
 
 const plain = (version: string) => version.replace(/^v/, "");
 export const RECHECK_MS = 30 * 60 * 1000, RESTART_POLL_MS = 800, RESTART_GIVE_UP_MS = 90 * 1000;
-/** Settings dispatches this after installing, so the notice switches to "Restart" at once. */
+/**
+ * Settings dispatches this after installing. With `{ restarting: true }` as its
+ * detail, Sift is already restarting and the notice waits to reload the page.
+ */
 export const UPDATE_CHANGED = "sift:update-changed";
 export const page = { reload: () => window.location.reload() };
+/** What installing returns. Sift restarts on its own when nothing is running. */
+export interface UpdateResult { installed: string; restartRequired: boolean; restarting?: boolean }
 
 /**
  * Shows only when there is something to do: a newer stable release, or an
- * installed one waiting for a restart. Installing backs up the workspace first;
- * restarting reloads this page once the new Sift is serving.
+ * installed one waiting for a restart. Installing backs up the workspace, then
+ * Sift restarts itself and this page reloads once the new version is serving.
  */
 export function UpdateNotice({ version, runningAgents }: { version: string; runningAgents: number }) {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
@@ -32,31 +37,22 @@ export function UpdateNotice({ version, runningAgents }: { version: string; runn
   const [busy, setBusy] = useState<"" | "install" | "restart">("");
   const [error, setError] = useState("");
   const polling = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const restarting = useRef(() => {});
   useEffect(() => {
     let live = true;
     const load = () => api<UpdateStatus>("/update").then(value => { if (live) setStatus(value); }).catch(() => {});
+    const changed = (event: Event) => (event as CustomEvent<{ restarting?: boolean } | undefined>).detail?.restarting ? restarting.current() : load();
     load();
     const timer = setInterval(load, RECHECK_MS);
-    window.addEventListener(UPDATE_CHANGED, load);
-    return () => { live = false; clearInterval(timer); window.removeEventListener(UPDATE_CHANGED, load); if (polling.current) clearTimeout(polling.current); };
+    window.addEventListener(UPDATE_CHANGED, changed);
+    return () => { live = false; clearInterval(timer); window.removeEventListener(UPDATE_CHANGED, changed); if (polling.current) clearTimeout(polling.current); };
   }, []);
-  if (!status || (!status.available && !status.restartRequired)) return null;
-  const pending = status.restartRequired;
-  const target = plain(pending && status.installed ? status.installed : status.latest);
-  const install = async () => {
-    setBusy("install"); setError("");
-    try {
-      await api("/update/apply", "POST", {});
-      setStatus(s => s && { ...s, installed: s.latest, restartRequired: true });
-    } catch (e) { setError((e as Error).message); }
-    finally { setBusy(""); }
-  };
-  const restart = async () => {
+  // The restarted process issues a new local session, so this page's session
+  // stops being accepted: that (or a new version) means Sift is back.
+  const awaitRestart = () => {
+    if (polling.current) return;
     setBusy("restart"); setError("");
-    try { await api("/restart", "POST", {}); }
-    catch (e) { setError((e as Error).message); setBusy(""); return; }
-    // The restarted process issues a new local session, so this page's session
-    // stops being accepted: that (or a new version) means Sift is back.
+    setStatus(s => s && { ...s, installed: s.installed || s.latest, restartRequired: true });
     const giveUp = Date.now() + RESTART_GIVE_UP_MS;
     const poll = async () => {
       try {
@@ -64,13 +60,34 @@ export function UpdateNotice({ version, runningAgents }: { version: string; runn
         if (response.status === 401 || (response.ok && (await response.json()).version !== version)) { page.reload(); return; }
       } catch { /* Not listening yet while the process restarts. */ }
       if (Date.now() > giveUp) {
+        polling.current = null;
         setBusy("");
+        setOpen(true);
         setError("Sift hasn’t come back yet. If you started it from a terminal, run sift serve again.");
         return;
       }
       polling.current = setTimeout(poll, RESTART_POLL_MS);
     };
     polling.current = setTimeout(poll, RESTART_POLL_MS);
+  };
+  useEffect(() => { restarting.current = awaitRestart; });
+  if (!status || (!status.available && !status.restartRequired)) return null;
+  const pending = status.restartRequired;
+  const target = plain(pending && status.installed ? status.installed : status.latest);
+  const install = async () => {
+    setBusy("install"); setError("");
+    try {
+      const result = await api<UpdateResult>("/update/apply", "POST", {});
+      if (result.restarting) { awaitRestart(); return; }
+      setStatus(s => s && { ...s, installed: result.installed || s.latest, restartRequired: true });
+    } catch (e) { setError((e as Error).message); }
+    setBusy("");
+  };
+  const restart = async () => {
+    setBusy("restart"); setError("");
+    try { await api("/restart", "POST", {}); }
+    catch (e) { setError((e as Error).message); setBusy(""); return; }
+    awaitRestart();
   };
   const label = busy === "restart" ? "Restarting Sift" : pending ? `Restart to finish updating to ${target}` : `Sift ${target} is available`;
   return <Popover open={open} onOpenChange={value => { if (busy !== "restart") setOpen(value); }}>
@@ -85,8 +102,8 @@ export function UpdateNotice({ version, runningAgents }: { version: string; runn
       <h2>{pending ? `Sift ${target} is installed` : `Sift ${target} is available`}</h2>
       <p>
         {pending
-          ? "Restart Sift to start using it. This page reloads on its own; schedules pause for a moment."
-          : `You’re on ${plain(version)}. Your workspace is backed up before anything changes, and nothing restarts until you choose.`}
+          ? busy === "restart" ? "Sift is restarting into the new version. This page reloads on its own." : "Restart Sift to start using it. This page reloads on its own; schedules pause for a moment."
+          : `You’re on ${plain(version)}. Installing backs up your workspace first, then Sift restarts and this page reloads.`}
       </p>
       {status.url && <a href={status.url} target="_blank" rel="noreferrer">What’s new<ExternalLink size={12} aria-hidden="true" /></a>}
       {runningAgents > 0 && <p>{runningAgents === 1 ? "An agent is" : `${runningAgents} agents are`} running. {pending ? "Restart" : "Install"} once {runningAgents === 1 ? "it finishes" : "they finish"}, or cancel {runningAgents === 1 ? "it" : "them"} first.</p>}

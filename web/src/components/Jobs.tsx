@@ -1,4 +1,5 @@
 import { Action } from "./shared";
+import { AgentMarkdown, transcriptBlocks, type TranscriptEntry } from "./AgentMarkdown";
 import { useEffect, useRef, useState } from "react";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
@@ -557,7 +558,7 @@ export function Runs({
 }) {
   const [detail, setDetail] = useState<{
       run: Run;
-      entries: { type: string; text: string; at: string; tool?: string }[];
+      entries: TranscriptEntry[];
     } | null>(null),
     [error, setError] = useState("");
   useEffect(() => {
@@ -686,13 +687,13 @@ export function Runs({
                   </div>
                 )}
                 <div className="run-transcript">
-                  {detail.entries.map((entry, i) =>
-                    entry.type === "text" ? (
-                      <span key={i}>{entry.text}</span>
+                  {transcriptBlocks(detail.entries).map((block) =>
+                    block.kind === "text" ? (
+                      <AgentMarkdown key={block.key} text={block.text} />
                     ) : (
-                      <div className={"run-log " + entry.type} key={i}>
+                      <div className={"run-log " + block.entry.type} key={block.key}>
                         <Terminal size={13} />
-                        <span>{entry.text}</span>
+                        <span>{block.entry.text}</span>
                       </div>
                     ),
                   )}
@@ -710,7 +711,7 @@ export function Runs({
                 {detail.run.summary && detail.run.status !== "running" && (
                   <details>
                     <summary>Retained summary</summary>
-                    <pre className="run-summary">{detail.run.summary}</pre>
+                    <AgentMarkdown className="run-summary" text={detail.run.summary} />
                   </details>
                 )}
                 <div className="task-origin">

@@ -36,7 +36,7 @@ func (s *Store) AddComment(taskID, text, actor, requestID string) (Event, error)
 	}
 	var task Task
 	if json.Unmarshal(rawTx(tx, "task", taskID), &task) != nil {
-		return event, &APIError{404, "Task not found"}
+		return event, &APIError{Status: 404, Message: "Task not found"}
 	}
 	if task.DeletedAt != "" || task.MergedInto != "" {
 		return event, conflict("Restore this task or open its merge survivor before commenting")

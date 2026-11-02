@@ -3,6 +3,7 @@ package sift
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -61,6 +62,12 @@ func writeOperation(w http.ResponseWriter, r *http.Request, operation func(conte
 	ctx = context.WithValue(ctx, progressKey{}, func(p operationProgress) { send(progressEnvelope{Type: "progress", Progress: &p}) })
 	result, err := operation(ctx)
 	if err != nil {
+		status := 500
+		var e *APIError
+		if errors.As(err, &e) {
+			status = e.Status
+		}
+		logFailure(status, err)
 		send(progressEnvelope{Type: "error", Error: err.Error()})
 		return
 	}

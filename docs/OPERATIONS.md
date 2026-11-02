@@ -166,16 +166,23 @@ maps to the next valid local instant. Intervals use elapsed durations.
 An update check reads only the stable release endpoint for `akstspace/sift`
 over GitHub HTTPS. Applying is explicit, verifies the platform archive's SHA-256,
 checks the executable version, creates a backup under maintenance lock, and
-atomically replaces the executable. Restart is required.
+atomically replaces the executable. Downloads retry a dropped connection or a
+brief GitHub fault twice; a GitHub failure is reported as such (HTTP 502), and
+every server-side failure is also written to the service log with its cause.
 
 When a newer stable release is known, an **Update available** control appears
-to the left of search. It installs the update (same verification and backup as
-above) and then offers **Restart now**. Restart waits for running agents and
-maintenance, shuts Sift down gracefully (live streams, storage, data lock), and
-re-executes the installed binary in place with the same arguments and process ID,
-so a LaunchAgent or systemd unit keeps supervising it. The open page reloads when
-the new process answers. A Sift started from a terminal restarts the same way. A missing repository,
-release, asset, checksum, or failed validation is an actionable error, not success.
+to the left of search. Installing (there, in Settings, or with `sift update`)
+requires that no agent is running, and then **restarts Sift automatically**:
+it shuts down gracefully (live streams, storage, data lock) and re-executes the
+installed binary in place with the same arguments and process ID, so a
+LaunchAgent or systemd unit keeps supervising it. No run or maintenance starts
+in between. The open page reloads when the new process answers. A Sift started
+from a terminal restarts the same way. If Sift cannot restart itself (it is not
+serving), the control offers **Restart now** instead. An update already written
+over the executable, for example by an older Sift, is recognized on the next
+check and only needs the restart; it is not downloaded again. A missing
+repository, release, asset, checksum, or failed validation is an actionable
+error, not success.
 No remote update success is claimed until a real release exists and is tested.
 This uses SHA-256 verification over GitHub HTTPS, not an independent signed-release
 trust system; it does not protect against compromise of the release account.

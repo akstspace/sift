@@ -184,7 +184,7 @@ func (st *Storage) Upload(ctx context.Context, name string, b []byte) (Attachmen
 	ready, client := st.Ready, st.Client
 	st.mu.RUnlock()
 	if !ready || client == nil {
-		return Attachment{}, &APIError{503, "Image storage is unavailable; check RustFS health"}
+		return Attachment{}, &APIError{Status: 503, Message: "Image storage is unavailable; check RustFS health"}
 	}
 	_, err = client.PutObject(ctx, "sift", a.ID, bytes.NewReader(b), int64(len(b)), minio.PutObjectOptions{ContentType: a.MIME})
 	return a, err

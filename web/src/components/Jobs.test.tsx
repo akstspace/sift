@@ -150,6 +150,18 @@ describe("real run history presentation", () => {
     await waitFor(() => expect(props.onSelect).toHaveBeenCalledWith("run_new"));
     await user.click(screen.getByRole("button", { name: "Back to runs" })); expect(props.onSelect).toHaveBeenCalledWith("");
   });
+  it("shows an agent's reply as formatted Markdown, even when streamed in pieces", async () => {
+    mock.mockResolvedValueOnce({ run: run({ summary: "### Summary\n- **One** thing" }), entries: [{ type: "text", text: "Created **23 tasks**.\n\n##" }, { type: "text", text: "# Today\n1. **Deliver** exports\n2. Triage `crash`" }, { type: "tool", text: "Running read" }, { type: "text", text: "Done." }] });
+    runs("run_test");
+    const transcript = await screen.findByRole("region", { name: "Agent transcript" });
+    await within(transcript).findByRole("heading", { name: "Today", level: 5 });
+    expect(within(transcript).getByText("23 tasks").tagName).toBe("STRONG");
+    expect([...transcript.querySelectorAll(".run-transcript ol > li")].map(li => li.textContent)).toEqual(["Deliver exports", "Triage crash"]);
+    expect(transcript.querySelector(".run-transcript li code")?.textContent).toBe("crash");
+    expect(transcript.querySelector(".run-log")?.textContent).toBe("Running read");
+    expect(transcript.querySelector(".run-transcript")?.textContent).not.toMatch(/[#*`]/);
+    expect(within(transcript.querySelector(".run-summary") as HTMLElement).getByRole("heading", { name: "Summary", level: 5 })).toBeDefined();
+  });
   it("shows running connection state and cancels only the selected run", async () => {
     mock.mockResolvedValueOnce({ run: run({ status: "running", model: "" }), entries: [] });
     const { props, user } = runs("run_test"); expect(await screen.findByText("Connecting to local Pi…")).toBeDefined();

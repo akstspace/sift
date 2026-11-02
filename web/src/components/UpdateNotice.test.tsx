@@ -43,6 +43,37 @@ describe("update notice", () => {
     expect(fetch).toHaveBeenCalledTimes(3); expect(fetch).toHaveBeenCalledWith("/api/health", { cache: "no-store" });
     expect(reload).toHaveBeenCalledOnce();
   });
+  it("follows Sift's own restart after installing, without asking to restart", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { user } = mount(status());
+    mock.mockImplementation(async path => path === "/update" ? status() : path === "/update/apply" ? { installed: "v0.1.3", restartRequired: true, restarting: true } : {});
+    const fetch = vi.fn().mockRejectedValueOnce(new TypeError("connection refused")).mockResolvedValueOnce({ status: 401, ok: false, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetch);
+    await user.click(await screen.findByRole("button", { name: "Sift 0.1.3 is available" }));
+    expect(screen.getByText(/Installing backs up your workspace first, then Sift restarts/)).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Install update" }));
+    expect(await screen.findByRole("button", { name: "Restarting Sift" })).toBeDefined();
+    expect(screen.getByText("Sift is restarting into the new version. This page reloads on its own.")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Restart now" })).toBeNull();
+    expect(mock).not.toHaveBeenCalledWith("/restart", "POST", {});
+    for (let i = 0; i < 2; i++) await act(async () => { await vi.advanceTimersByTimeAsync(RESTART_POLL_MS); });
+    expect(reload).toHaveBeenCalledOnce();
+  });
+  it("waits for the restart Settings started, once, even if told twice", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mount(status());
+    await screen.findByRole("button", { name: "Sift 0.1.3 is available" });
+    const fetch = vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => ({ version: "0.1.3" }) });
+    vi.stubGlobal("fetch", fetch);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(UPDATE_CHANGED, { detail: { restarting: true } }));
+      window.dispatchEvent(new CustomEvent(UPDATE_CHANGED, { detail: { restarting: true } }));
+    });
+    expect(screen.getByRole("button", { name: "Restarting Sift" })).toBeDefined();
+    await act(async () => { await vi.advanceTimersByTimeAsync(RESTART_POLL_MS); });
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(reload).toHaveBeenCalledOnce();
+  });
   it("treats a new version answering as the restart having finished", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const { user } = mount(status({ installed: "v0.1.3", restartRequired: true }));
@@ -58,7 +89,9 @@ describe("update notice", () => {
     await user.click(await screen.findByRole("button", { name: "Restart to finish updating to 0.1.3" }));
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("connection refused")));
     await user.click(screen.getByRole("button", { name: "Restart now" }));
+    await user.keyboard("{Escape}");
     await act(async () => { await vi.advanceTimersByTimeAsync(RESTART_GIVE_UP_MS + RESTART_POLL_MS * 2); });
+    // The panel reopens so the explanation is seen even if it was dismissed.
     expect(screen.getByRole("alert").textContent).toContain("hasn’t come back yet");
     expect((screen.getByRole("button", { name: "Restart now" }) as HTMLButtonElement).disabled).toBe(false);
     expect(reload).not.toHaveBeenCalled();

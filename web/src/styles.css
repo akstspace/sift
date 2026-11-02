@@ -830,34 +830,45 @@ code {
 .status-dot.rose {
   background: var(--danger);
 }
-/* Work stays scannable at both densities. */
+/* Work stays scannable at both densities. The board is a row of fixed-height
+   panes: the page stays put while each column scrolls on its own, so a card can
+   be dragged to any column (the whole pane is a drop target) without scrolling
+   the page. List, Trash and Archive still scroll as a page. A very short window
+   keeps a usable pane height and lets the page scroll instead. */
+.page-transition:has(.kanban) { height: 100%; }
+.board-page:has(.kanban),
+.task-view:has(> .kanban) { min-height: 0; }
 .kanban {
   display: flex;
   gap: 18px;
   flex: 1;
-  overflow: auto;
-  padding-bottom: 20px;
-  align-items: flex-start;
+  min-height: 260px;
+  overflow: auto hidden;
+  padding-bottom: 4px;
+  align-items: stretch;
 }
 .board-column {
   flex: 1 0 245px;
   min-width: 0;
   max-width: 480px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   border-radius: 10px;
   background: color-mix(in srgb, var(--surface) 42%, var(--ground));
-  min-height: 220px;
-  padding: 0 8px 10px;
+  padding: 0 4px;
   transition: background 0.15s;
 }
 .board-column.drag-over {
   background: var(--blue-soft);
 }
 .board-column > header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 8px;
   height: 48px;
-  padding: 0 5px;
+  padding: 0 9px;
 }
 .board-column h2 {
   font-size: 13px;
@@ -875,11 +886,21 @@ code {
   width: 25px;
   color: var(--muted);
 }
+/* The scrolling part of a pane. Its inset keeps focus rings and the hover
+   border clear of the clipping edge. */
 .column-tasks {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 35%, transparent) transparent;
+  padding: 4px 4px 12px;
 }
+.column-tasks > * { flex-shrink: 0; }
 .task-card {
   border: 1px solid color-mix(in srgb, var(--line) 55%, var(--surface));
   border-radius: 12px;
@@ -1959,12 +1980,29 @@ code {
   outline-offset: -2px;
 }
 .run-transcript {
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 14px;
   line-height: 1.9;
   margin-bottom: 24px;
 }
+/* Agent replies read like a written note: real headings, lists, code and
+   tables. Single line breaks inside a paragraph are kept, as agents write. */
+.agent-markdown { min-height: 0; line-height: 1.75; }
+.agent-markdown > :first-child { margin-top: 0; }
+.agent-markdown > :last-child { margin-bottom: 0; }
+.agent-markdown p { white-space: pre-line; }
+.agent-markdown :is(h3, h4, h5, h6) { margin: 22px 0 6px; line-height: 1.35; font-weight: 600; letter-spacing: 0; }
+.agent-markdown > :is(h3, h4, h5, h6):first-child { margin-top: 0; }
+.agent-markdown h3 { font-size: 18px; }
+.agent-markdown h4 { font-size: 16px; }
+.agent-markdown h5 { font-size: 15px; }
+.agent-markdown h6 { font-size: 14px; }
+.agent-markdown li + li { margin-top: 3px; }
+.agent-markdown li > :is(ul, ol) { margin: 3px 0; }
+.agent-markdown code { font-size: 12.5px; padding: 1px 4px; }
+.agent-markdown pre code { padding: 0; background: none; }
+.agent-markdown hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
+.agent-markdown img { max-height: 360px; }
 .run-log {
   display: flex;
   align-items: center;
@@ -1981,7 +2019,6 @@ code {
   color: var(--danger);
 }
 .run-summary {
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 13px;
   margin-top: 12px;

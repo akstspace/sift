@@ -346,5 +346,9 @@
   "internal/sift/restart.go:go.lang.security.audit.dangerous-syscall-exec:cd0b6b06a6276af544c1871e8f1f623845d70dedd9a84428124afd92e6cf9ab3": {
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
     "reason": "After an authenticated POST /api/restart, Sift re-executes itself in place: os.Executable() is the running Sift binary (which an installed update has just replaced after SHA-256 verification), and os.Args/os.Environ() are the process's own original arguments and environment. No request body, header, task, comment, agent output or other user data reaches the path, argv or environment. The endpoint refuses while agents or maintenance are running and only acts after the HTTP server, streams, data lock and RustFS child have shut down."
+  },
+  "internal/sift/system.go:go.lang.security.audit.dangerous-exec-command:5bccfa35efb2c6f60bea2e81dcea67d4018a5acd06b31203a7f1a2399ee4506c": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Update checks run this process's own executable path (os.Executable, resolved by the OS, never from a request, task, comment, setting or agent output) with the fixed argument \"version\", a 10-second timeout, and no shell. It runs only after the file at that path has been replaced since startup (different inode, size or modification time), to recognize an update already installed there, and it is the same binary Sift re-executes on its next restart, so running it adds no trust beyond the installed executable. Output is compared to the release tag only."
   }
 }

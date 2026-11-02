@@ -34,8 +34,14 @@ type Service struct {
 	// stopping closes when the HTTP server begins shutting down, so live
 	// streams end instead of holding a graceful shutdown open.
 	stopping chan struct{}
-	wg       sync.WaitGroup
-	runs     sync.WaitGroup
+	// restarting is set (under runMu) once a restart is reserved, so no new
+	// run or maintenance starts in the moment before the process re-executes.
+	restarting bool
+	// startedFrom identifies the executable this process was started from. If
+	// the file on disk changes, an update may already be waiting for a restart.
+	startedFrom os.FileInfo
+	wg          sync.WaitGroup
+	runs        sync.WaitGroup
 }
 
 func NewService(dir string) (*Service, error) {
@@ -46,6 +52,9 @@ func NewService(dir string) (*Service, error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Service{Dir: dir, Store: store, Storage: &Storage{}, active: map[string]context.CancelFunc{}, activeRun: map[string]string{}, ctx: ctx, cancel: cancel}
+	if exe, e := executablePath(); e == nil {
+		s.startedFrom, _ = os.Stat(exe)
+	}
 	if err = s.recoverRestore(); err != nil {
 		cancel()
 		store.Close()
@@ -274,7 +283,7 @@ func (s *Service) SaveJob(j Job, expected int, actor string) (Job, error) {
 func (s *Service) RunJob(id string) (Run, error) {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
-	if s.maintenance {
+	if s.maintenance || s.restarting {
 		return Run{}, conflict("Sift is paused for backup or update")
 	}
 	var j Job
@@ -368,7 +377,7 @@ func (s *Service) scheduleLoop() {
 func (s *Service) scheduleTick(now time.Time) {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
-	if s.maintenance {
+	if s.maintenance || s.restarting {
 		return
 	}
 	var cfg Settings

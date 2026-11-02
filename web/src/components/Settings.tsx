@@ -23,7 +23,7 @@ import type { Column, Settings as SettingsType, Snapshot } from "../types";
 import { Button, Busy, Confirm, CopyButton, Field } from "./shared";
 import { InstallApp } from "./InstallApp";
 import { TagManager } from "./Organization";
-import { UPDATE_CHANGED } from "./UpdateNotice";
+import { UPDATE_CHANGED, type UpdateResult } from "./UpdateNotice";
 import { useDraftGuard, useDraftProtection } from "./DraftGuard";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 
@@ -34,6 +34,8 @@ interface Update {
   url: string;
   error: string;
   checkedAt: string;
+  installed?: string;
+  restartRequired?: boolean;
 }
 export function Settings({
   snapshot,
@@ -573,7 +575,12 @@ export function Settings({
             <strong>Sift {snapshot.version}</strong>
           </div>
           {update?.error && <p className="muted small">{update.error}</p>}
-          {update?.available && (
+          {update?.restartRequired ? (
+            <p>
+              Version {update.installed || update.latest} is installed. Restart
+              Sift from the notice at the top of the window to start using it.
+            </p>
+          ) : update?.available && (
             <p>
               Version {update.latest} is available.{" "}
               <a href={update.url} target="_blank" rel="noreferrer">
@@ -595,15 +602,18 @@ export function Settings({
               <RefreshCw size={14} className={busy === "check" ? "spin" : ""} />
               Check now
             </Button>
-            {update?.available && (
+            {update?.available && !update.restartRequired && (
               <Confirm
                 title="Apply Sift update"
-                description="Sift backs up your workspace before updating. Finish or cancel active jobs first, then restart Sift after the update."
+                description="Sift backs up your workspace, installs the update, and restarts. Finish or cancel active jobs first."
                 action={async () => {
-                  await api("/update/apply", "POST", {});
-                  window.dispatchEvent(new Event(UPDATE_CHANGED));
+                  const installed = await api<UpdateResult>("/update/apply", "POST", {});
+                  setUpdate({ ...update, installed: installed.installed, restartRequired: true });
+                  window.dispatchEvent(new CustomEvent(UPDATE_CHANGED, { detail: { restarting: !!installed.restarting } }));
                   setResult(
-                    "Update installed. Use Restart to update at the top of the window to finish.",
+                    installed.restarting
+                      ? "Update installed. Sift is restarting; this page reloads on its own."
+                      : "Update installed. Use Restart to update at the top of the window to finish.",
                   );
                 }}
               >
