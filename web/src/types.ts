@@ -1,10 +1,10 @@
 export interface CheckItem { id: string; title: string; done: boolean }
-export interface Task { id:string;title:string;description:string;status:string;priority:string;project:string;tags:string[];icon:string;parentId:string;today:boolean;dueDate:string;snoozedUntil:string;checklist:CheckItem[];attachments:string[];source:string;sourceKey:string;mergedInto:string;deletedAt:string;createdAt:string;updatedAt:string;actor:string;revision:number }
+export interface Task { id:string;title:string;description:string;status:string;priority:string;project:string;tags:string[];icon:string;parentId:string;today:boolean;dueDate:string;snoozedUntil:string;checklist:CheckItem[];attachments:string[];source:string;sourceKey:string;mergedInto:string;deletedAt:string;completedAt:string;archivedAt:string;createdAt:string;updatedAt:string;actor:string;revision:number }
 export interface Column { id:string;name:string;color:string;order:number }
 export interface Entity { id:string;name:string;color:string;archived:boolean;icon:string }
 export interface Job { id:string;name:string;prompt:string;directory:string;provider:string;model:string;thinking:string;scheduleType:string;schedule:string;weekdays?:number[];timezone:string;enabled:boolean;timeoutMinutes:number;sessionId:string;nextRun:string;lastRun:string;pending:boolean;includeImages:boolean;revision:number }
 export interface Run { id:string;jobId:string;jobName:string;status:string;startedAt:string;endedAt:string;summary:string;error:string;model:string;sessionId:string;job:Job }
-export interface Settings { id:string;onboarded:boolean;timezone:string;theme:string;view:string;concurrency:number;timeoutMinutes:number;checkUpdates:boolean;desktopNotifications:boolean;backupRetention:number;logRetentionDays:number;trashRetentionDays:number;lastBackup:string;backupError:string }
+export interface Settings { id:string;onboarded:boolean;timezone:string;theme:string;view:string;concurrency:number;timeoutMinutes:number;checkUpdates:boolean;desktopNotifications:boolean;backupRetention:number;logRetentionDays:number;trashRetentionDays:number;autoArchiveDays:number;lastBackup:string;backupError:string }
 export interface Notification { id:string;title:string;message:string;read:boolean;at:string }
 export interface Attachment { id:string;name:string;mime:string;size:number;width:number;height:number;hash:string }
 export interface Snapshot {cursor:number;version:string;tasks:Task[];columns:Column[];projects:Entity[];tags:Entity[];jobs:Job[];runs:Run[];attachments:Attachment[];notifications:Notification[];settings:Settings}
@@ -13,4 +13,4 @@ export interface Duplicate {id:string;title:string;status:string;score:number;re
 export interface CatalogIcon {id:string;name:string;category:string;aliases:string[];symbol?:string}
 export interface PiModel {id:string;name:string;provider:string;reasoning:boolean;input:string[];contextWindow:number}
 export interface PiInfo {connected:boolean;version:string;path:string;models:PiModel[];thinking:{levels?:unknown[]};state:{model?:PiModel;thinkingLevel?:string}}
-export const newTask = (parentId=''):Task=>({id:'',title:'',description:'',status:'open',priority:'none',project:'',tags:[],icon:'circle-check',parentId,today:true,dueDate:'',snoozedUntil:'',checklist:[],attachments:[],source:'user',sourceKey:'',mergedInto:'',deletedAt:'',createdAt:'',updatedAt:'',actor:'user',revision:0})
+export const newTask = (parentId=''):Task=>({id:'',title:'',description:'',status:'open',priority:'none',project:'',tags:[],icon:'circle-check',parentId,today:true,dueDate:'',snoozedUntil:'',checklist:[],attachments:[],source:'user',sourceKey:'',mergedInto:'',deletedAt:'',completedAt:'',archivedAt:'',createdAt:'',updatedAt:'',actor:'user',revision:0})

@@ -91,7 +91,8 @@ Use the same `--data` directory for CLI commands and the running service.
 
 ## Your work
 
-- Today is a focused selection over a persistent backlog, not a daily reset.
+- Today is a focused selection over **All tasks**, not a daily reset. Set or clear a due date in task details using the calendar or YYYY-MM-DD entry; deadlines also work through `--due-date` in the CLI.
+- Done tasks automatically move to **Archive** seven days after completion by default. Settings → Recovery & retention lets you change the delay (0 disables it). Archived tasks, attachments, and history are kept indefinitely; open one and choose **Reopen task** to return it to All tasks. Edits do not reset completion time. Reopening an archived subtask also reopens its completed parent.
 - Board and virtualized list views share search and priority, tag, project,
   and status filters. Task details overlay the board without resizing it.
 - Tasks support priorities, due dates, snooze, Markdown, local images,

@@ -26,7 +26,7 @@ describe("responsive workspace navigation", () => {
     const { props, user } = mount();
     expect(screen.queryByRole("button", { name: "Project 10" })).toBeNull(); expect(screen.queryByRole("button", { name: "Project 11" })).toBeNull();
     expect(screen.getByRole("button", { name: "Project 0" }).getAttribute("aria-current")).toBe("page");
-    for (const [label, page] of [["Today", "today"], ["Backlog", "backlog"], ["Projects & tags", "organization"], ["Agents", "jobs"], ["Run history", "runs"], ["Settings", "settings"], ["Trash", "trash"], ["Manage projects", "organization"]]) {
+    for (const [label, page] of [["Today", "today"], ["All tasks", "backlog"], ["Projects & tags", "organization"], ["Agents", "jobs"], ["Run history", "runs"], ["Settings", "settings"], ["Archive", "archive"], ["Trash", "trash"], ["Manage projects", "organization"]]) {
       await user.click(screen.getByRole("button", { name: label })); expect(props.navigate).toHaveBeenLastCalledWith(page);
     }
     await user.click(screen.getByRole("button", { name: "New task" })); expect(props.addTask).toHaveBeenCalledOnce();

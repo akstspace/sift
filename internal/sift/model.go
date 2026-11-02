@@ -35,11 +35,31 @@ type Task struct {
 	SourceKey    string          `json:"sourceKey"`
 	MergedInto   string          `json:"mergedInto"`
 	DeletedAt    string          `json:"deletedAt"`
+	CompletedAt  string          `json:"completedAt"`
+	ArchivedAt   string          `json:"archivedAt"`
 	CreatedAt    string          `json:"createdAt"`
 	UpdatedAt    string          `json:"updatedAt"`
 	Actor        string          `json:"actor"`
 	Revision     int             `json:"revision"`
 }
+
+func (t *Task) UnmarshalJSON(data []byte) error {
+	type plain Task
+	v := plain(*t)
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	// Old task records/history used UpdatedAt for completion. Freeze that
+	// conservative baseline on read, before any subsequent edit can change it.
+	if v.Status == "done" && v.CompletedAt == "" {
+		if _, err := time.Parse(time.RFC3339Nano, v.UpdatedAt); err == nil {
+			v.CompletedAt = v.UpdatedAt
+		}
+	}
+	*t = Task(v)
+	return nil
+}
+
 type Column struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
@@ -122,9 +142,23 @@ type Settings struct {
 	BackupRetention      int    `json:"backupRetention"`
 	LogRetentionDays     int    `json:"logRetentionDays"`
 	TrashRetentionDays   int    `json:"trashRetentionDays"`
+	AutoArchiveDays      int    `json:"autoArchiveDays"`
 	LastBackup           string `json:"lastBackup"`
 	BackupError          string `json:"backupError"`
 }
+
+// Older workspaces and backups predate this preference. An explicit zero
+// disables automatic archiving; an absent field gets the seven-day default.
+func (s *Settings) UnmarshalJSON(data []byte) error {
+	type plain Settings
+	v := plain{AutoArchiveDays: 7}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*s = Settings(v)
+	return nil
+}
+
 type Event struct {
 	ID       int64           `json:"id"`
 	Kind     string          `json:"kind"`

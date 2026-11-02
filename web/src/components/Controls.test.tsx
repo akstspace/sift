@@ -42,6 +42,26 @@ describe("local calendar choices", () => {
     await user.click(screen.getByRole("button", { name: "Due date" })); await user.click(screen.getByRole("button", { name: "Clear date" }));
     expect(screen.getByRole("status", { name: "Stored date" }).textContent).toBe("");
   });
+  it("accepts typed civil dates without submitting the enclosing task form and rejects invalid days", async () => {
+    const user = userEvent.setup(); render(<Dates initial="" />, { wrapper: TestProviders });
+    expect(screen.getByText("Set date")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Due date" }));
+    const input = screen.getByRole("textbox", { name: "Date (YYYY-MM-DD)" });
+    await user.type(input, "2027-02-29{Enter}");
+    expect((await screen.findByRole("alert")).textContent).toContain("valid date");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    await user.clear(input); await user.type(input, "2028-02-29");
+    await user.click(screen.getByRole("button", { name: "Set date" }));
+    expect(screen.getByRole("status", { name: "Stored date" }).textContent).toBe("2028-02-29");
+    await user.click(screen.getByRole("button", { name: "Due date" }));
+    await user.clear(screen.getByRole("textbox", { name: "Date (YYYY-MM-DD)" }));
+    await user.type(screen.getByRole("textbox", { name: "Date (YYYY-MM-DD)" }), "tomorrow");
+    await user.click(screen.getByRole("button", { name: "Set date" }));
+    expect(screen.getByRole("alert")).toBeDefined();
+    await user.clear(screen.getByRole("textbox", { name: "Date (YYYY-MM-DD)" }));
+    await user.type(screen.getByRole("textbox", { name: "Date (YYYY-MM-DD)" }), "2029-01-03{Enter}");
+    expect(screen.getByRole("status", { name: "Stored date" }).textContent).toBe("2029-01-03");
+  });
 });
 
 describe("shared accessibility and deliberate actions", () => {

@@ -23,7 +23,7 @@ export const snapshotFixture = (overrides: Partial<Snapshot> = {}): Snapshot => 
   ], settings: {
     id: "app", onboarded: true, timezone: "UTC", theme: "light", view: "board",
     concurrency: 3, timeoutMinutes: 30, checkUpdates: false, desktopNotifications: false,
-    backupRetention: 14, logRetentionDays: 30, trashRetentionDays: 30,
+    backupRetention: 14, logRetentionDays: 30, trashRetentionDays: 30, autoArchiveDays: 7,
     lastBackup: "", backupError: "",
   }, ...overrides,
 });

@@ -2,7 +2,7 @@
 export const settle = [0.16, 1, 0.3, 1] as const;
 export const shellSpring = { type: "spring", stiffness: 340, damping: 38, mass: 0.8 } as const;
 export const selectionSpring = { type: "spring", stiffness: 480, damping: 40, mass: 0.65 } as const;
-export const pageOrder = ["today", "backlog", "organization", "jobs", "runs", "settings", "trash"];
+export const pageOrder = ["today", "backlog", "organization", "jobs", "runs", "settings", "archive", "trash"];
 
 // A floating inspector enters from the board's right edge and settles without
 // bounce. Its backdrop follows the same presence lifecycle, including exit.

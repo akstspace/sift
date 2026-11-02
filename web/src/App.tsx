@@ -299,7 +299,7 @@ function Workspace() {
   const today = localDate(timezone);
   void clock;
   const activeTasks = useMemo(
-    () => snapshot?.tasks.filter((t) => !t.deletedAt && !t.mergedInto) || [],
+    () => snapshot?.tasks.filter((t) => !t.deletedAt && !t.mergedInto && !t.archivedAt) || [],
     [snapshot?.tasks],
   );
   const todayTasks = useMemo(
@@ -311,7 +311,7 @@ function Workspace() {
             (t.snoozedUntil && t.snoozedUntil <= today)) &&
           (!t.snoozedUntil || t.snoozedUntil <= today) &&
           (t.status !== "done" ||
-            localDateAt(t.updatedAt, timezone) ===
+            localDateAt(t.completedAt || t.updatedAt, timezone) ===
               today),
       ),
     [activeTasks, today, timezone],
@@ -321,13 +321,15 @@ function Workspace() {
     let list =
       page === "trash"
         ? snapshot.tasks.filter((t) => !!t.deletedAt)
+        : page === "archive"
+          ? snapshot.tasks.filter(t => !!t.archivedAt && !t.deletedAt && !t.mergedInto)
         : page === "today"
           ? todayTasks
           : activeTasks;
     return list
       .filter(
         (t) =>
-          (page === "trash" || !t.snoozedUntil || t.snoozedUntil <= today) &&
+          (["trash", "archive"].includes(page) || !t.snoozedUntil || t.snoozedUntil <= today) &&
           (!project || t.project === project) &&
           (!query ||
             (t.title + " " + t.description + " " + t.id)
@@ -399,14 +401,14 @@ function Workspace() {
         <Toaster theme={darkTheme ? "dark" : "light"} richColors />
       </MotionConfig>
     );
-  const boardPage = ["today", "backlog", "trash"].includes(page);
+  const boardPage = ["today", "backlog", "trash", "archive"].includes(page);
   const title = project
     ? snapshot.projects.find((p) => p.id === project)?.name || "Project"
     : page === "today"
       ? "Today"
       : page === "trash"
         ? "Trash"
-        : "Backlog";
+        : page === "archive" ? "Archive" : "All tasks";
   const activeRuns = snapshot.runs.filter((r) => r.status === "running"),
     unread = snapshot.notifications.filter((n) => !n.read).length;
   const navItems = [
@@ -418,7 +420,7 @@ function Workspace() {
     },
     {
       id: "backlog",
-      label: "Backlog",
+      label: "All tasks",
       icon: Archive,
       count: activeTasks.filter((t) => t.status !== "done").length,
     },
@@ -544,12 +546,14 @@ function Workspace() {
                                 : "A little clarity for the day ahead."
                               : page === "trash"
                                 ? `Recoverable for ${snapshot.settings.trashRetentionDays} days. History is kept after removal.`
-                                : project
+                                 : page === "archive"
+                                   ? "Completed work, kept indefinitely. Reopen a task to return it to All tasks."
+                                 : project
                                   ? "A home for the work that belongs together."
                                   : "Everything worth coming back to."}
                           </p>
                         </div>
-                        {page !== "trash" && (
+                        {!["trash", "archive"].includes(page) && (
                           <Button onClick={() => addTask()}>
                             <Plus size={16} />
                             <span>New task</span>
@@ -604,7 +608,7 @@ function Workspace() {
                             </span>
                           )}
                         </Button>
-                        <ToggleGroup type="single" value={snapshot.settings.view} onValueChange={view => { if(view) saveSettings({...snapshot.settings, view}).catch(e => toast.error(e.message)); }}
+                        {page !== "archive" && <ToggleGroup type="single" value={snapshot.settings.view} onValueChange={view => { if(view) saveSettings({...snapshot.settings, view}).catch(e => toast.error(e.message)); }}
                           className="view-toggle"
                           aria-label="Task view"
                         >
@@ -620,7 +624,7 @@ function Workspace() {
                             <List size={17} />
                             <span>List</span>
                           </ToggleGroupItem>
-                        </ToggleGroup>
+                        </ToggleGroup>}
                       </div>
                       <AnimatePresence initial={false}>
                         {filters && (
@@ -692,28 +696,27 @@ function Workspace() {
                           Try a broader search or remove a filter. Your other
                           work is still here.
                         </Empty>
-                      ) : page === "trash" ? (
+                       ) : ["trash", "archive"].includes(page) ? (
                         <div className="trash-list">
                           {tasks.length ? (
                             tasks.map((t) => (
                                   <Action key={t.id} onClick={() => openTask(t)}>
-                                <Trash2 size={15} />
+                                {page === "archive" ? <Archive size={15} /> : <Trash2 size={15} />}
                                 <span>{t.title}</span>
-                                <small>{friendlyTime(t.deletedAt)}</small>
+                                <small>{friendlyTime(page === "archive" ? t.archivedAt : t.deletedAt)}</small>
                                 <ChevronRight size={14} />
                                   </Action>
                             ))
                           ) : (
-                            <Empty icon={Trash2} title="Nothing in Trash.">
-                              Deleted tasks stay here temporarily, so an
-                              accidental click doesn’t have to stick.
+                            <Empty icon={page === "archive" ? Archive : Trash2} title={page === "archive" ? "No archived tasks yet." : "Nothing in Trash."}>
+                              {page === "archive" ? "Completed tasks appear here after the delay set in Settings. Nothing is deleted." : "Deleted tasks stay here temporarily, so an accidental click doesn’t have to stick."}
                             </Empty>
                           )}
                         </div>
                       ) : (
                         <AnimatePresence mode="wait" initial={false}><motion.div key={snapshot.settings.view} className="task-view" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduced ? 0.06 : 0.12 }}><TaskBoard
                           tasks={tasks}
-                          allTasks={snapshot.tasks}
+                          allTasks={activeTasks}
                           columns={snapshot.columns}
                           projects={snapshot.projects}
                           catalog={catalog}

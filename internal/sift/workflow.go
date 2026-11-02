@@ -53,9 +53,11 @@ func (s *Store) DeleteColumn(id, target string) error {
 	changed := []Task{}
 	for key, t := range tasks {
 		if t.Status == id {
+			old := t
 			t.Status = target
 			t.Revision++
 			t.UpdatedAt = now()
+			updateCompletion(&t, old, t.UpdatedAt)
 			t.Actor = "user"
 			tasks[key] = t
 			changed = append(changed, t)

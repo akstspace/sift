@@ -17,7 +17,7 @@ func validateSettings(in Settings) error {
 	if in.View != "board" && in.View != "list" {
 		return invalid("Invalid task view")
 	}
-	if in.Concurrency < 1 || in.Concurrency > 16 || in.TimeoutMinutes < 1 || in.TimeoutMinutes > 1440 || in.BackupRetention < 1 || in.BackupRetention > 100 || in.LogRetentionDays < 1 || in.LogRetentionDays > 3650 || in.TrashRetentionDays < 1 || in.TrashRetentionDays > 3650 {
+	if in.Concurrency < 1 || in.Concurrency > 16 || in.TimeoutMinutes < 1 || in.TimeoutMinutes > 1440 || in.BackupRetention < 1 || in.BackupRetention > 100 || in.LogRetentionDays < 1 || in.LogRetentionDays > 3650 || in.TrashRetentionDays < 1 || in.TrashRetentionDays > 3650 || in.AutoArchiveDays < 0 || in.AutoArchiveDays > 3650 {
 		return invalid("Settings limits are outside the supported range")
 	}
 	return nil
@@ -36,6 +36,16 @@ func validateTaskGraph(tasks map[string]Task, columns map[string]bool) error {
 	sort.Strings(ids)
 	for _, id := range ids {
 		t := tasks[id]
+		for _, stamp := range []string{t.CompletedAt, t.ArchivedAt} {
+			if stamp != "" {
+				if _, err := time.Parse(time.RFC3339Nano, stamp); err != nil {
+					return invalid("Invalid task lifecycle timestamp")
+				}
+			}
+		}
+		if (t.Status != "done" && (t.CompletedAt != "" || t.ArchivedAt != "")) || (t.ArchivedAt != "" && t.CompletedAt == "") {
+			return invalid("Only completed tasks can be archived")
+		}
 		if !columns[t.Status] {
 			return invalid("Task %s references an unknown workflow column", id)
 		}

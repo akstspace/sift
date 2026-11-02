@@ -68,7 +68,7 @@ func OpenStore(dir string) (*Store, error) {
 	s := &Store{DB: db, wake: make(chan struct{}, 1), dir: dir}
 	var settings Settings
 	if !s.Get("settings", "app", &settings) {
-		settings = Settings{ID: "app", Timezone: time.Now().Location().String(), Theme: "system", View: "board", Concurrency: 3, TimeoutMinutes: 30, CheckUpdates: true, BackupRetention: 14, LogRetentionDays: 30, TrashRetentionDays: 30}
+		settings = Settings{ID: "app", Timezone: time.Now().Location().String(), Theme: "system", View: "board", Concurrency: 3, TimeoutMinutes: 30, CheckUpdates: true, BackupRetention: 14, LogRetentionDays: 30, TrashRetentionDays: 30, AutoArchiveDays: 7}
 		if settings.Timezone == "Local" {
 			settings.Timezone = "UTC"
 		}
@@ -355,6 +355,7 @@ func (s *Store) SaveTask(t Task, expected int, actor, reason, requestID string) 
 		}
 		if p.Status == "done" && t.Status != "done" && t.DeletedAt == "" {
 			p.Status = "open"
+			reopenLifecycle(&p)
 			p.Revision++
 			p.UpdatedAt = now()
 			p.Actor = actor
@@ -408,7 +409,13 @@ func (s *Store) SaveTask(t Task, expected int, actor, reason, requestID string) 
 	if t.Attachments == nil {
 		t.Attachments = []string{}
 	}
+	// Completion time is server-owned. Editing a completed task must not delay
+	// archiving, and reopening must start a fresh lifecycle (including parents).
 	t.UpdatedAt = now()
+	if t.ArchivedAt != old.ArchivedAt {
+		return t, invalid("Archive state is managed automatically; reopen an archived task to restore it")
+	}
+	updateCompletion(&t, old, t.UpdatedAt)
 	t.Actor = actor
 	tasks, columns, err := taskGraphTx(tx)
 	if err != nil {
@@ -561,6 +568,7 @@ func (s *Store) Undo(eventID int64, actor string) error {
 		p, ok := tasks[t.ParentID]
 		if ok && p.Status == "done" && !changed[p.ID] {
 			p.Status = "open"
+			reopenLifecycle(&p)
 			p.Revision++
 			p.UpdatedAt = now()
 			p.Actor = actor
@@ -631,6 +639,7 @@ func (s *Store) Merge(source, target string, sourceRev, targetRev int, actor, re
 		c.UpdatedAt = now()
 		if c.Status != "done" && b.Status == "done" {
 			b.Status = "open"
+			reopenLifecycle(&b)
 		}
 		if err = putTx(tx, "task", c.ID, c, actor, reason, group); err != nil {
 			return err

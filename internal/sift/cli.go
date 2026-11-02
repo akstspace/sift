@@ -170,6 +170,7 @@ tasks list|search QUERY|tree       Inspect tasks (JSON)
 tasks get ID                      Task, current revision, history, potential duplicates
 tasks duplicates --title TITLE   Find potential duplicates before creating
 tasks add --title TITLE [--today] [--parent ID] [--source-key KEY]
+          [--due-date YYYY-MM-DD]  Optional deadline (empty value clears it on update)
 tasks update ID --revision N [--status STATUS] [--reason REASON]
 tasks merge ID --into ID --revision N --target-revision N --reason REASON
   Task options: --description TEXT --priority none|low|medium|high|urgent

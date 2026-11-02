@@ -1,5 +1,6 @@
 import {
   IconArchive as Archive,
+  IconListCheck as ListCheck,
   IconHelpCircle as CircleHelp,
   IconFolder as Folder,
   IconHistory as History,
@@ -33,7 +34,7 @@ import {
 
 export const navigation = [
   { id: "today", label: "Today", icon: SunMedium },
-  { id: "backlog", label: "Backlog", icon: Archive },
+  { id: "backlog", label: "All tasks", icon: ListCheck },
   { id: "organization", label: "Projects & tags", icon: Folder },
   { id: "jobs", label: "Agents", icon: Terminal },
   { id: "runs", label: "Run history", icon: History },
@@ -188,6 +189,7 @@ export function AppSidebar({
         <SidebarMenu>
           {[
             { id: "settings", label: "Settings", icon: Settings2 },
+            { id: "archive", label: "Archive", icon: Archive },
             { id: "trash", label: "Trash", icon: Trash2 },
           ].map(({ id, label, icon: Icon }) => (
             <SidebarMenuItem key={id}>

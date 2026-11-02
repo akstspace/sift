@@ -48,7 +48,7 @@ describe("task sheet read, draft, and save contracts", () => {
     const history: HistoryEntry = { id: 1, kind: "task", entityId: task.id, actor: "user", reason: "", at: task.updatedAt, before: { ...task, revision: 0 }, after: task };
     const { props, user } = mount(task, {}, [history]);
     expect(screen.getByRole("img", { name: "Task attachment" })).toBeDefined(); expect(await screen.findByText("Updated this task")).toBeDefined();
-    await user.click(screen.getByRole("combobox", { name: "Focus" })); await user.click(screen.getByRole("option", { name: "Backlog only" }));
+    await user.click(screen.getByRole("combobox", { name: "Focus" })); await user.click(screen.getByRole("option", { name: "All tasks only" }));
     await user.click(save()); expect(props.onSave).toHaveBeenCalledWith(expect.objectContaining({ today: false }));
   });
   it("keeps an optional blank description read-first and enters writing only by explicit action", async () => {
@@ -157,6 +157,18 @@ describe("task sheet read, draft, and save contracts", () => {
     mount(taskFixture({ mergedInto: "tsk_survivor", source: "" }));
     expect(screen.getByText(/Merged into tsk_survivor/)).toBeDefined();
     expect(screen.getByText("Source: manual")).toBeDefined(); expect((save() as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("reopens an archived task without discarding history and handles a failed save", async () => {
+    const task = taskFixture({ status: "done", archivedAt: "2026-01-12T00:00:00Z", completedAt: "2026-01-02T00:00:00Z" });
+    const { props, user } = mount(task);
+    expect(screen.getByText(/Reopen this task to return it to All tasks/)).toBeDefined();
+    props.onSave.mockRejectedValueOnce(new Error("Workspace busy"));
+    await user.click(screen.getByRole("button", { name: "Reopen task" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("Workspace busy");
+    expect(props.onClose).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Reopen task" }));
+    await waitFor(() => expect(props.onClose).toHaveBeenCalledOnce());
+    expect(props.onSave).toHaveBeenLastCalledWith(expect.objectContaining({ id: task.id, status: "open", revision: task.revision, archivedAt: task.archivedAt }), "Reopen archived task");
   });
   it("saves full task properties, civil dates, and parent assignment without native selects", async () => {
     const parent = taskFixture({ id: "parent", title: "Parent project task" }), task = taskFixture();

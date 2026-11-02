@@ -64,7 +64,7 @@ export function Settings({
   const restore = useRef<HTMLInputElement>(null);
   const { guard } = useDraftGuard();
   // Server-maintained backup timestamps are not unsaved user preferences.
-  const preferenceKeys: (keyof SettingsType)[] = ["theme", "timezone", "concurrency", "timeoutMinutes", "checkUpdates", "desktopNotifications", "backupRetention", "trashRetentionDays", "logRetentionDays"];
+  const preferenceKeys: (keyof SettingsType)[] = ["theme", "timezone", "concurrency", "timeoutMinutes", "checkUpdates", "desktopNotifications", "backupRetention", "trashRetentionDays", "logRetentionDays", "autoArchiveDays"];
   const preferencesDirty = preferenceKeys.some(key => draft[key] !== snapshot.settings[key]);
   const dirty = preferencesDirty || !!column.trim() || snapshot.columns.some(c => names[c.id] !== undefined && names[c.id] !== c.name);
   useDraftProtection(dirty, !!busy);
@@ -231,6 +231,9 @@ export function Settings({
           </div>
           <div className="settings-controls">
             <div className="form-grid">
+              <Field label="Archive completed tasks after (days)" hint="Default: 7 days after completion. Use 0 to turn off. Archived tasks stay in Archive indefinitely; reopen them to restore.">
+                <Input type="number" min={0} max={3650} value={draft.autoArchiveDays} onChange={e => set("autoArchiveDays", +e.target.value)} />
+              </Field>
               <Field label="Daily backups to keep">
                 <Input
                   type="number"

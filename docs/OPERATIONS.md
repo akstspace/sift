@@ -21,6 +21,28 @@ autostart when a CLI command cannot connect. `sift help` documents commands;
 `sift schema` provides live fields/rules. Agent attribution is not proof of
 identity: local programs with the token can submit attributed changes.
 
+## Due dates and completed-task archive
+
+All tasks replaces the Backlog label. Due dates are optional civil dates in
+YYYY-MM-DD format, editable in task details with the calendar or date entry,
+and through `sift tasks add/update --due-date YYYY-MM-DD` (use `--due-date=`
+to clear one). Overdue and due-today filters use the workspace timezone.
+
+Maintenance runs at startup and every minute, including with the browser closed.
+By default a Done task moves to Archive after seven elapsed 24-hour days from
+completion. Change **Archive completed tasks after (days)** in Settings; 0
+disables it. Completion timestamps are server-owned: edits do not reset them,
+and reopening/recompleting starts a fresh clock. Older tasks use their last
+recorded edit as a conservative baseline; missing preferences default to 7.
+
+Archive is separate from Trash. Archived records, attachments and history are
+kept indefinitely and included in backups. Open an archived task and choose
+**Reopen task** to return it to All tasks, clearing any old snooze. Reopening a child also reopens its
+completed parent, with linked undo history. A completed parent waits until its
+remaining visible children are eligible before archiving. Archive changes are
+revision-checked and undoable; undoing only the archive leaves the original
+completion time, so an eligible Done task can archive again on maintenance.
+
 ## Scheduler and Pi
 
 The local Pi executable is discovered through `SIFT_PI` or PATH. Sift does not

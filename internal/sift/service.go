@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/robfig/cron/v3"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -424,6 +425,9 @@ func (s *Service) checkMaintenance() {
 		}
 	}
 	if s.dataMu.TryRLock() {
+		if err := s.Store.ArchiveCompleted(cfg.AutoArchiveDays, time.Now()); err != nil {
+			log.Printf("Archive completed tasks: %v", err)
+		}
 		s.Store.Prune(cfg)
 		s.dataMu.RUnlock()
 	}

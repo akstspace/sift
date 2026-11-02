@@ -75,7 +75,7 @@ describe("deliberate settings and recovery", () => {
   it("saves all preference controls and preserves local changes across backup metadata refresh", async () => {
     const { props, rerender, user } = mount(); await screen.findByText("Ready");
     await choose("Appearance", "Dark");
-    for (const [name, value] of [["Parallel jobs", "4"], ["Default timeout (minutes)", "45"], ["Daily backups to keep", "20"], ["Trash retention (days)", "35"], ["Detailed logs (days)", "40"]]) {
+    for (const [name, value] of [["Parallel jobs", "4"], ["Default timeout (minutes)", "45"], ["Daily backups to keep", "20"], ["Trash retention (days)", "35"], ["Detailed logs (days)", "40"], ["Archive completed tasks after (days)", "0"]]) {
       fireEvent.change(screen.getByRole("spinbutton", { name }), { target: { value } });
     }
     await user.click(screen.getByRole("checkbox", { name: /Check for stable/ }));
@@ -83,7 +83,7 @@ describe("deliberate settings and recovery", () => {
     rerender(<Settings {...props} snapshot={snapshot} />);
     expect(screen.getByRole("combobox", { name: "Appearance" }).textContent).toBe("Dark");
     await user.click(screen.getByRole("button", { name: "Save preferences" }));
-    await waitFor(() => expect(props.onSettings).toHaveBeenCalledWith(expect.objectContaining({ theme: "dark", concurrency: 4, timeoutMinutes: 45, backupRetention: 20, trashRetentionDays: 35, logRetentionDays: 40, checkUpdates: true, lastBackup: snapshot.settings.lastBackup })));
+    await waitFor(() => expect(props.onSettings).toHaveBeenCalledWith(expect.objectContaining({ theme: "dark", concurrency: 4, timeoutMinutes: 45, backupRetention: 20, trashRetentionDays: 35, logRetentionDays: 40, autoArchiveDays: 0, checkUpdates: true, lastBackup: snapshot.settings.lastBackup })));
   });
   it("protects unsaved preferences before revisiting setup and reports failed persistence", async () => {
     const { props, user } = mount(); props.onSettings.mockRejectedValueOnce(new Error("Read-only workspace"));

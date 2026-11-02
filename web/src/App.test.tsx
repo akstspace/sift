@@ -35,7 +35,8 @@ beforeEach(() => {
     if (path.startsWith("/history")) return [];
     if (path.startsWith("/tasks") && (method === "PUT" || method === "POST")) {
       const value = (body as { task: Task }).task;
-      const task = { ...value, id: value.id || "created_task", revision: value.revision + 1 };
+      const task = { ...value, id: value.id || "created_task", revision: value.revision + 1,
+        ...(value.archivedAt && value.status !== "done" ? { archivedAt: "", completedAt: "", snoozedUntil: "" } : {}) };
       current = { ...current, tasks: [...current.tasks.filter(t => t.id !== task.id), task] }; return { task };
     }
     if (path.startsWith("/tasks/")) return { history: [] };
@@ -45,7 +46,7 @@ beforeEach(() => {
 });
 async function mount(snapshot = current) {
   current = snapshot; const result = render(<App />); const user = userEvent.setup();
-  await screen.findByRole("button", { name: "Backlog" });
+  await screen.findByRole("button", { name: "All tasks" });
   await act(async () => Events.instances.at(-1)?.onopen?.());
   return { ...result, user };
 }
@@ -53,6 +54,40 @@ async function choose(label: string, name: string) {
   fireEvent.click(screen.getByRole("combobox", { name: label })); fireEvent.click(await screen.findByRole("option", { name }));
 }
 describe("workspace integration", () => {
+  it("separates recoverable archived work from Today, All tasks, and Trash, with an empty archive state", async () => {
+    preference.reduced = true;
+    const stamp = new Date().toISOString();
+    const archived = taskFixture({ id: "archived", title: "Archived reference", status: "done", completedAt: stamp, archivedAt: stamp, snoozedUntil: "2099-01-01" });
+    const { user } = await mount(snapshotFixture({ tasks: [archived, taskFixture(), taskFixture({ id: "deleted", title: "Deleted archived", deletedAt: stamp, archivedAt: stamp }), taskFixture({ id: "merged", title: "Merged archived", mergedInto: "archived", archivedAt: stamp })] }));
+    expect(screen.queryByRole("button", { name: archived.title })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "All tasks" }));
+    await screen.findByRole("heading", { name: "All tasks", level: 1 });
+    expect(screen.queryByRole("button", { name: archived.title })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Backlog" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Archive" }));
+    await screen.findByRole("heading", { name: "Archive", level: 1 });
+    expect(screen.queryByRole("group", { name: "Task view" })).toBeNull();
+    expect(screen.queryByRole("radio", { name: "Kanban view" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "New task" })).not.toBeNull(); // Sidebar action remains available.
+    expect(screen.queryByRole("button", { name: "Deleted archived" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Merged archived" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: /Archived reference/ }));
+    expect(await screen.findByRole("button", { name: "Reopen task" })).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Reopen task" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task details" })).toBeNull());
+    await user.click(screen.getByRole("button", { name: "All tasks" }));
+    expect(await screen.findByRole("button", { name: archived.title })).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Archive" }));
+    await screen.findByRole("heading", { name: "Archive", level: 1 });
+    current = { ...current, tasks: [] };
+    await act(async () => Events.instances.at(-1)?.listeners.get("reset")?.());
+    expect(await screen.findByText("No archived tasks yet.")).toBeDefined();
+  });
+  it("uses completion time rather than a later edit for Today's done tasks", async () => {
+    const task = taskFixture({ status: "done", completedAt: "2001-01-01T00:00:00Z", updatedAt: new Date().toISOString() });
+    await mount(snapshotFixture({ tasks: [task] }));
+    expect(screen.queryByRole("button", { name: task.title })).toBeNull();
+  });
   it("passes real storage errors into onboarding and clears them when health recovers", async () => {
     current = snapshotFixture({ settings: { ...current.settings, onboarded: false } });
     const request = mock.getMockImplementation()!, interval = vi.spyOn(globalThis, "setInterval");
@@ -80,7 +115,7 @@ describe("workspace integration", () => {
     const { user } = await mount(snapshotFixture({ tasks }));
     expect(screen.getByRole("button", { name: "Finished today" })).toBeDefined();
     for (const task of tasks.slice(0, 4)) expect(screen.queryByRole("button", { name: task.title })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Backlog" }));
+    await user.click(screen.getByRole("button", { name: "All tasks" }));
     expect(await screen.findByRole("button", { name: "Ordinary backlog" })).toBeDefined();
   });
   it("retains an open project route after that project disappears from a newer snapshot", async () => {
@@ -159,7 +194,7 @@ describe("workspace integration", () => {
     mock.mockImplementation(async path => { if (path === "/snapshot") throw Error("Service unavailable"); return []; });
     render(<App />); expect(await screen.findByText("Cannot connect to your local workspace.")).toBeDefined();
     mock.mockImplementation(async path => path === "/snapshot" ? current : path === "/icons" ? catalogFixture : { storage: { ready: true } });
-    fireEvent.click(screen.getByRole("button", { name: "Reconnect" })); expect(await screen.findByRole("button", { name: "Backlog" })).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" })); expect(await screen.findByRole("button", { name: "All tasks" })).toBeDefined();
   });
   it("renders loading while the first real snapshot is pending and routes first-time setup", async () => {
     const pending = deferred<Snapshot>(); mock.mockImplementation(async path => path === "/snapshot" ? pending.promise : []);
@@ -175,7 +210,7 @@ describe("workspace integration", () => {
     expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("1");
     for (const name of ["Today focus", "Due evidence", "Woken task", "Finished today"]) expect(screen.getByRole("button", { name })).toBeDefined();
     for (const name of ["Not yet", "Finished before", "Recoverable", "Merged hidden"]) expect(screen.queryByRole("button", { name })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Backlog" })); expect(await screen.findByRole("button", { name: "Finished before" })).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "All tasks" })); expect(await screen.findByRole("button", { name: "Finished before" })).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Trash" })); await screen.findByRole("heading", { name: "Trash" });
     await user.click(screen.getByRole("button", { name: /Recoverable/ })); expect(await screen.findByRole("button", { name: "Restore task" })).toBeDefined();
     expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -183,7 +218,7 @@ describe("workspace integration", () => {
   it("combines search, priority, tag, due, and status filters and can clear every constraint", async () => {
     const task = taskFixture({ today: true, priority: "high", tags: ["research"], dueDate: "2001-01-01" });
     const { user } = await mount(snapshotFixture({ tasks: [task], tags: [{ id: "research", name: "Research", color: "sea", archived: false, icon: "circle-check" }] }));
-    await user.type(screen.getByRole("textbox", { name: "Search all tasks" }), "research"); await screen.findByRole("heading", { name: "Backlog", level: 1 });
+    await user.type(screen.getByRole("textbox", { name: "Search all tasks" }), "research"); await screen.findByRole("heading", { name: "All tasks", level: 1 });
     await user.click(screen.getByRole("button", { name: "Filters" }));
     await choose("Filter priority", "High"); await choose("Filter tags", "Research"); await choose("Filter due date", "Overdue"); await choose("Filter status", "Open");
     expect(screen.getByRole("button", { name: task.title })).toBeDefined();
@@ -215,7 +250,7 @@ describe("workspace integration", () => {
     expect((screen.getByRole("textbox", { name: "Task title" }) as HTMLTextAreaElement).value).toContain("draft");
     await user.click(screen.getByRole("button", { name: "Cancel" })); await user.click(screen.getByRole("button", { name: "Discard changes" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    await user.click(screen.getByRole("button", { name: "Backlog" })); expect(await screen.findByRole("button", { name: "External revision" })).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "All tasks" })); expect(await screen.findByRole("button", { name: "External revision" })).toBeDefined();
   });
   it("reports refresh failure while retaining tasks and allows a deliberate retry", async () => {
     const task = taskFixture({ today: true }); const { user, unmount } = await mount(snapshotFixture({ tasks: [task] }));
@@ -263,7 +298,7 @@ describe("workspace integration", () => {
     await act(async () => undo.onClick({} as React.MouseEvent<HTMLButtonElement>)); expect(mock).toHaveBeenCalledWith("/undo/22", "POST", {});
     mock.mockResolvedValueOnce([]); await act(async () => undo.onClick({} as React.MouseEvent<HTMLButtonElement>)); expect(error).toHaveBeenLastCalledWith(expect.stringContaining("no longer available"));
     mock.mockRejectedValueOnce(new Error("History unavailable")); await act(async () => undo.onClick({} as React.MouseEvent<HTMLButtonElement>)); expect(error).toHaveBeenLastCalledWith("History unavailable");
-    await user.click(screen.getByRole("button", { name: "Backlog" }));
+    await user.click(screen.getByRole("button", { name: "All tasks" }));
     await user.click(await screen.findByRole("button", { name: "Reopen " + task.title })); await waitFor(() => expect(success).toHaveBeenCalledWith("Task updated", expect.anything()));
   });
   it("retains sidebar defaults with blocked storage and reports preference errors", async () => {
@@ -284,15 +319,15 @@ describe("workspace integration", () => {
     await user.click(within(document.querySelector(".page-heading")!).getByRole("button", { name: "New task" }));
     expect(screen.getByRole("combobox", { name: "Project" }).textContent).toBe("Research project");
     await user.click(screen.getByRole("button", { name: "Cancel" })); await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    await user.click(screen.getByRole("button", { name: "Backlog" }));
-    await screen.findByRole("heading", { name: "Backlog", level: 1 });
+    await user.click(screen.getByRole("button", { name: "All tasks" }));
+    await screen.findByRole("heading", { name: "All tasks", level: 1 });
     expect(current.tasks).toEqual([]);
   });
   it("creates project-scoped children and protects real parent navigation", async () => {
     const parent = taskFixture({ project: "p" }), child = taskFixture({ id: "child", title: "Full child task", parentId: parent.id, project: "p" });
     const { user } = await mount(snapshotFixture({ projects: [{ id: "p", name: "Research project", archived: false, color: "sea", icon: "folder" }], tasks: [parent, child] }));
-    await user.click(screen.getByRole("button", { name: "Backlog" }));
-    await screen.findByRole("heading", { name: "Backlog", level: 1 });
+    await user.click(screen.getByRole("button", { name: "All tasks" }));
+    await screen.findByRole("heading", { name: "All tasks", level: 1 });
     await user.click(await screen.findByRole("button", { name: parent.title }));
     await user.click(within((await screen.findByRole("heading", { name: "Subtasks" })).parentElement!).getByRole("button", { name: "Add" }));
     expect(await screen.findByRole("button", { name: "Create task" })).toBeDefined(); expect(screen.getByRole("button", { name: parent.title })).toBeDefined();
