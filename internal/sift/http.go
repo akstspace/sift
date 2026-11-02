@@ -510,6 +510,30 @@ func (s *Service) routes() http.Handler {
 		}
 		writeJSON(w, 200, n)
 	})
+	mux.HandleFunc("POST /api/notifications/clear", func(w http.ResponseWriter, r *http.Request) {
+		// Notifications are the person's inbox; an agent clearing one could
+		// hide a "Job needs attention" alert before anyone saw it.
+		if actorOf(r) != "user" {
+			apiError(w, &APIError{Status: 403, Message: "Only the user can clear notifications"})
+			return
+		}
+		var in struct {
+			IDs []string `json:"ids"`
+		}
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		if len(in.IDs) == 0 {
+			apiError(w, invalid("Choose notifications to clear"))
+			return
+		}
+		cleared, err := s.Store.ClearNotifications(in.IDs, "user")
+		if err != nil {
+			apiError(w, err)
+			return
+		}
+		writeJSON(w, 200, map[string]int{"cleared": cleared})
+	})
 	mux.HandleFunc("GET /api/update", func(w http.ResponseWriter, r *http.Request) {
 		s.updateMu.Lock()
 		defer s.updateMu.Unlock()

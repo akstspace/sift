@@ -238,7 +238,11 @@ creation Undo misreading nullable grouped history blobs, and RustFS shutdown
 waiting after startup had consumed the child's exit result. Startup now refuses
 views in place of required SQLite tables, closes failed initialization handles,
 and propagates default-workflow persistence errors. Failed notification
-acknowledgements report storage errors rather than false success.
+acknowledgements report storage errors rather than false success. Only the person
+can clear notifications, one at a time or all at once. A clear removes exactly the
+notifications that were shown, so one arriving mid-click survives. It skips any
+already cleared in another window and records a single history group. A storage
+failure leaves every notification in place.
 CLI connections now validate an exact loopback URL/port and require a token;
 truncated upload responses propagate errors rather than appearing successful.
 Malformed release-asset requests are refused without panicking. Health reports

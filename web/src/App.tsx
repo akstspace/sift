@@ -37,12 +37,13 @@ import {
   type Task,
   type HistoryEntry,
 } from "./types";
-import { Action, Button, Busy, Empty, IconButton, Mark } from "./components/shared";
+import { Action, Button, Busy, Confirm, Empty, IconButton, Mark } from "./components/shared";
 import { TooltipProvider } from "./components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "./components/ui/dialog";
@@ -107,7 +108,8 @@ function Workspace() {
     refreshRunning = useRef(false),
     cursor = useRef(0),
     snapshotRef = useRef(snapshot),
-    seenNotifications = useRef(new Set<string>());
+    seenNotifications = useRef(new Set<string>()),
+    refocusClear = useRef<number | null>(null);
   const routeKey = project ? `project:${project}` : page;
   const previousRoute = useRef({ key: routeKey, page, project });
   const direction = useRef<PageDirection>({ sign: 1, depth: false });
@@ -223,6 +225,24 @@ function Workspace() {
       }
     }
   }, [snapshot?.notifications]);
+  // Clearing removes the focused button; keep keyboard focus in the list on
+  // the next notification's clear button, or the dialog's Close at the end.
+  useEffect(() => {
+    const index = refocusClear.current;
+    if (index === null) return;
+    refocusClear.current = null;
+    const next = document.querySelectorAll<HTMLButtonElement>(".notification-list .notification-clear");
+    (next[Math.min(index, next.length - 1)] ?? document.querySelector<HTMLButtonElement>(".notifications-dialog [data-slot='dialog-close']"))?.focus();
+  }, [snapshot?.notifications]);
+  const clearNotifications = async (ids: string[]) => {
+    await api("/notifications/clear", "POST", { ids });
+    await refresh();
+  };
+  const clearNotification = async (id: string, index: number) => {
+    refocusClear.current = document.activeElement?.classList.contains("notification-clear") ? index : null;
+    try { await clearNotifications([id]); }
+    catch (e) { refocusClear.current = null; toast.error((e as Error).message); }
+  };
   const navigate = (value: string, projectId = "") => guard(() => {
     setPage(value);
     setProject(projectId);
@@ -430,7 +450,8 @@ function Workspace() {
         ? "Trash"
         : page === "archive" ? "Archive" : "All tasks";
   const activeRuns = snapshot.runs.filter((r) => r.status === "running"),
-    unread = snapshot.notifications.filter((n) => !n.read).length;
+    unread = snapshot.notifications.filter((n) => !n.read).length,
+    notices = [...snapshot.notifications].sort((a, b) => b.at.localeCompare(a.at));
   const navItems = [
     {
       id: "today",
@@ -831,36 +852,61 @@ function Workspace() {
                 Local service activity and things that need your attention.
               </DialogDescription>
             </DialogHeader>
-            {snapshot.notifications.length ? (
-              <div className="notification-list">
-                {[...snapshot.notifications]
-                  .sort((a, b) => b.at.localeCompare(a.at))
-                  .map((n) => (
+            {notices.length ? (
+              <>
+                <div className="notification-list">
+                  {notices.map((n, index) => (
                     <div key={n.id} className={n.read ? "read" : ""}>
                       <Bell size={16} />
-                      <div>
+                      <div className="notification-body">
                         <strong>{n.title}</strong>
                         <p>{n.message}</p>
                         <small>{friendlyTime(n.at)}</small>
                       </div>
-                      {!n.read && (
+                      <div className="notification-actions">
+                        {!n.read && (
+                          <IconButton
+                            label="Mark notification read"
+                            onClick={() =>
+                              api("/notifications/" + n.id + "/read", "POST", {})
+                                .then(refresh)
+                                .catch((e) => toast.error((e as Error).message))
+                            }
+                          >
+                            <Check size={15} />
+                          </IconButton>
+                        )}
                         <IconButton
-                          label="Mark notification read"
-                          onClick={async () => {
-                            await api(
-                              "/notifications/" + n.id + "/read",
-                              "POST",
-                              {},
-                            );
-                            await refresh();
-                          }}
+                          label="Clear notification"
+                          className="notification-clear"
+                          onClick={() => clearNotification(n.id, index)}
                         >
-                          <Check size={15} />
+                          <X size={15} />
                         </IconButton>
-                      )}
+                      </div>
                     </div>
                   ))}
-              </div>
+                </div>
+                <DialogFooter className="notification-footer">
+                  <Confirm
+                    title="Clear all notifications"
+                    description={
+                      notices.length === 1
+                        ? "Remove your one notification? This can’t be undone."
+                        : `Remove all ${notices.length} notifications? This can’t be undone.`
+                    }
+                    destructive
+                    action={() => clearNotifications(notices.map((n) => n.id))}
+                  >
+                    {(open) => (
+                      <Button variant="outline" size="sm" onClick={open}>
+                        <Trash2 size={14} />
+                        Clear all
+                      </Button>
+                    )}
+                  </Confirm>
+                </DialogFooter>
+              </>
             ) : (
               <Empty icon={Bell} title="You’re all caught up.">
                 When something needs your attention, it will appear here.

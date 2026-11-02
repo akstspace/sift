@@ -40,6 +40,7 @@ beforeEach(() => {
       current = { ...current, tasks: [...current.tasks.filter(t => t.id !== task.id), task] }; return { task };
     }
     if (path.startsWith("/tasks/")) return { history: [] };
+    if (path === "/notifications/clear") { const ids = (body as { ids: string[] }).ids; current = { ...current, notifications: current.notifications.filter(n => !ids.includes(n.id)) }; return { cleared: ids.length }; }
     if (path.startsWith("/notifications/") && method === "POST") { current = { ...current, notifications: current.notifications.map(n => ({ ...n, read: true })) }; return {}; }
     return {};
   });
@@ -284,6 +285,60 @@ describe("workspace integration", () => {
     await user.click(screen.getByRole("button", { name: "1 unread notifications" }));
     await user.click(screen.getByRole("button", { name: "Mark notification read" })); await waitFor(() => expect(mock).toHaveBeenCalledWith("/notifications/n/read", "POST", {}));
     expect(current.notifications[0].read).toBe(true);
+  });
+  it("clears one notification, then all that remain after confirming, keeping keyboard focus in the list", async () => {
+    const { user } = await mount(snapshotFixture({ notifications: [
+      { id: "c", title: "Oldest notice", message: "Three", at: "2026-01-01T00:00:00Z", read: true },
+      { id: "a", title: "Newest notice", message: "One", at: "2026-01-03T00:00:00Z", read: false },
+      { id: "b", title: "Middle notice", message: "Two", at: "2026-01-02T00:00:00Z", read: true },
+    ] }));
+    await user.click(screen.getByRole("button", { name: "1 unread notifications" }));
+    const dialog = screen.getByRole("dialog", { name: "Notifications" });
+    within(dialog).getAllByRole("button", { name: "Clear notification" })[0].focus(); await user.keyboard("{Enter}");
+    await waitFor(() => expect(mock).toHaveBeenCalledWith("/notifications/clear", "POST", { ids: ["a"] }));
+    await waitFor(() => expect(within(dialog).queryByText("Newest notice")).toBeNull());
+    expect(within(dialog).queryByRole("button", { name: "Mark notification read" })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getAllByRole("button", { name: "Clear notification" })[0]));
+    await user.click(within(dialog).getByRole("button", { name: "Clear all" }));
+    let confirm = await screen.findByRole("alertdialog", { name: "Clear all notifications" });
+    expect(within(confirm).getByText("Remove all 2 notifications? This can’t be undone.")).toBeDefined();
+    await user.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(current.notifications).toHaveLength(2);
+    await user.click(within(dialog).getByRole("button", { name: "Clear all" }));
+    confirm = await screen.findByRole("alertdialog", { name: "Clear all notifications" });
+    await user.click(within(confirm).getByRole("button", { name: "Clear all notifications" }));
+    await waitFor(() => expect(mock).toHaveBeenCalledWith("/notifications/clear", "POST", { ids: ["b", "c"] }));
+    expect(await within(dialog).findByText("You’re all caught up.")).toBeDefined();
+    expect(within(dialog).queryByRole("button", { name: "Clear all" })).toBeNull();
+  });
+  it("keeps notifications whose clear or acknowledgement fails, and lands focus on Close after the last one", async () => {
+    const { user } = await mount(snapshotFixture({ notifications: [{ id: "only", title: "Job needs attention", message: "Daily review: timed out", at: "2026-01-01T00:00:00Z", read: false }] }));
+    const request = mock.getMockImplementation()!, error = vi.spyOn(toast, "error").mockReturnValue(1);
+    let failing = true;
+    mock.mockImplementation(async (path, method, body) => {
+      if (failing && path.startsWith("/notifications/")) throw new Error("Workspace changes are paused for maintenance");
+      return request(path, method, body);
+    });
+    await user.click(screen.getByRole("button", { name: "1 unread notifications" }));
+    const dialog = screen.getByRole("dialog", { name: "Notifications" });
+    await user.click(within(dialog).getByRole("button", { name: "Mark notification read" }));
+    await waitFor(() => expect(error).toHaveBeenCalledWith("Workspace changes are paused for maintenance"));
+    within(dialog).getByRole("button", { name: "Clear notification" }).focus(); await user.keyboard("{Enter}");
+    await waitFor(() => expect(error).toHaveBeenCalledTimes(2));
+    expect(within(dialog).getByText("Job needs attention")).toBeDefined();
+    await user.click(within(dialog).getByRole("button", { name: "Clear all" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Clear all notifications" });
+    expect(within(confirm).getByText("Remove your one notification? This can’t be undone.")).toBeDefined();
+    await user.click(within(confirm).getByRole("button", { name: "Clear all notifications" }));
+    expect((await within(confirm).findByRole("alert")).textContent).toContain("paused for maintenance");
+    await user.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    failing = false;
+    within(dialog).getByRole("button", { name: "Clear notification" }).focus(); await user.keyboard("{Enter}");
+    expect(await within(dialog).findByText("You’re all caught up.")).toBeDefined();
+    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Close" })));
+    error.mockRestore();
   });
   it("reports task mutation failures without pretending completion succeeded", async () => {
     const task = taskFixture({ today: true }); const { user } = await mount(snapshotFixture({ tasks: [task] }));

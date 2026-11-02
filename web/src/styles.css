@@ -2223,9 +2223,19 @@ body:has(.drag-preview) .task-card { cursor: grabbing; }
 .notification-list > div.read > svg {
   color: var(--muted);
 }
-.notification-list > div > div {
+.notification-list .notification-body {
   flex: 1;
   min-width: 0;
+}
+.notification-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 2px;
+  margin: -6px -6px 0 0;
+}
+.notification-footer {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
 }
 .notification-list strong {
   font-size: 12px;
