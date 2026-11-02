@@ -26,7 +26,9 @@ documentation = json.loads((ROOT / "scripts/package-docs.json").read_text())
 for required in documentation:
     if not (ROOT / required).is_file():
         raise SystemExit(f"Missing {required}; prepare documentation and run scripts/collect-licenses.py first")
-subprocess.run(["python3", "scripts/prepare-rustfs.py", "--platform", args.platform], cwd=ROOT, check=True)
+# All target payloads must exist for the collector's cross-platform go list.
+# Build tags still embed only the selected target's payload in each executable.
+subprocess.run(["python3", "scripts/prepare-rustfs.py", "--platform", "all"], cwd=ROOT, check=True)
 subprocess.run(["npm", "ci"], cwd=ROOT / "web", check=True)
 subprocess.run(["npm", "run", "build"], cwd=ROOT / "web", check=True)
 subprocess.run(["python3", "scripts/collect-licenses.py"], cwd=ROOT, check=True)

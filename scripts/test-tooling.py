@@ -84,6 +84,51 @@ class LocalConnectionTests(unittest.TestCase):
 
 
 class LocalReleaseNoticeTests(unittest.TestCase):
+    def go_module_functions(self, root):
+        source = ast.parse((ROOT / "scripts/collect-licenses.py").read_text())
+        selected = [node for node in source.body if isinstance(node, ast.FunctionDef) and node.name in {"records", "collect_go_modules"}]
+        namespace = {"json": json, "os": os, "subprocess": subprocess, "ROOT": root}
+        exec(compile(ast.Module(body=selected, type_ignores=[]), "collect-licenses.py:functions", "exec"), namespace)
+        return namespace
+
+    def test_go_notices_use_union_of_all_release_targets_not_host_defaults(self):
+        root = Path("/fixture/sift")
+        ns = self.go_module_functions(root)
+        common = {"Path": "example/common", "Version": "v1.2.3", "Dir": "/fixture/modules/common"}
+        platform_modules = {
+            ("darwin", "arm64"): {"Path": "example/mac-only", "Version": "v2.0.0", "Dir": "/fixture/modules/mac"},
+            ("linux", "arm64"): {"Path": "example/arm-only", "Version": "v3.0.0", "Dir": "/fixture/modules/arm"},
+            ("linux", "amd64"): {"Path": "example/amd-only", "Version": "v4.0.0", "Dir": "/fixture/modules/amd"},
+        }
+        def deps(command, **kwargs):
+            self.assertEqual(command, ["go", "list", "-deps", "-json", "./cmd/sift"])
+            self.assertEqual(kwargs["cwd"], root)
+            self.assertTrue(kwargs["text"])
+            env = kwargs["env"]
+            self.assertEqual(env["CGO_ENABLED"], "0")
+            target = env["GOOS"], env["GOARCH"]
+            return "\n".join(json.dumps(pkg) for pkg in [{"Standard": True}, {"Module": {"Main": True}},
+                            {"Module": common}, {"Module": common}, {"Module": platform_modules[target]}])
+        results = []
+        for host in [{"GOOS": "windows", "GOARCH": "386", "CGO_ENABLED": "1"}, {"GOOS": "linux", "GOARCH": "amd64"}]:
+            with patch.dict(os.environ, host, clear=True), patch.object(subprocess, "check_output", side_effect=deps) as command:
+                results.append(ns["collect_go_modules"]())
+                self.assertEqual(command.call_count, 3)
+        self.assertEqual(results[0], results[1])
+        self.assertEqual(set(results[0]), {common["Path"], *(mod["Path"] for mod in platform_modules.values())})
+
+    def test_go_notice_target_failures_and_conflicting_modules_are_not_ignored(self):
+        ns = self.go_module_functions(Path("/fixture/sift"))
+        with patch.object(subprocess, "check_output", side_effect=subprocess.CalledProcessError(1, ["go", "list"])):
+            with self.assertRaises(subprocess.CalledProcessError):
+                ns["collect_go_modules"]()
+        first = {"Module": {"Path": "example/common", "Version": "v1.0.0", "Dir": "/fixture/first"}}
+        for field, value in [("Version", "v2.0.0"), ("Dir", "/fixture/second")]:
+            second = {"Module": dict(first["Module"], **{field: value})}
+            with self.subTest(field=field), patch.object(subprocess, "check_output", side_effect=[json.dumps(first), json.dumps(second)]):
+                with self.assertRaisesRegex(ValueError, "Inconsistent Go module"):
+                    ns["collect_go_modules"]()
+
     def notice_functions(self, root):
         source = ast.parse((ROOT / "scripts/collect-licenses.py").read_text())
         selected = [node for node in source.body if isinstance(node, ast.FunctionDef) and node.name in {"retained_scroll_bar_notice", "consolidate"}]
@@ -151,7 +196,9 @@ class LocalReleaseNoticeTests(unittest.TestCase):
             for name in ["RustFS-1.0.4-APACHE-2.0.txt", "shadcn-ui-MIT.txt", "font.txt", "npm/current/LICENSE", "stale.txt"]:
                 (notices / name).write_text("Fixture " + name)
             index = {"assets": ["font.txt"], "npm": [{"files": ["npm/current/LICENSE"]}], "go": []}
+            commands = []
             def build(command, **kwargs):
+                commands.append(command)
                 if command[:2] == ["go", "build"]:
                     Path(command[command.index("-o") + 1]).write_bytes(b"fixture executable")
                 if command == ["python3", "scripts/collect-licenses.py"]:
@@ -160,6 +207,9 @@ class LocalReleaseNoticeTests(unittest.TestCase):
                 with patch("sys.argv", [str(script), "--version", "0.1.0", "--platform", "darwin-arm64"]), patch.object(subprocess, "check_output", return_value="0.1.0\n"), patch.object(subprocess, "run", side_effect=build), redirect_stdout(io.StringIO()):
                     runpy.run_path(str(script), run_name="__main__")
             run_release()
+            self.assertEqual(commands[0], ["python3", "scripts/prepare-rustfs.py", "--platform", "all"])
+            self.assertLess(commands.index(["python3", "scripts/prepare-rustfs.py", "--platform", "all"]),
+                            commands.index(["python3", "scripts/collect-licenses.py"]))
             archive = root / "dist/0.1.0/sift_darwin_arm64.tar.gz"
             first = archive.read_bytes()
             with tarfile.open(archive) as tar:
@@ -817,13 +867,13 @@ class PublicationTests(unittest.TestCase):
             path.write_text(name + " fixture")
         self.packages()
 
-    def packages(self, omit=(), changed=False):
+    def packages(self, omit=(), changed=False, changed_source=None):
         for target in ["darwin_arm64", "linux_arm64", "linux_amd64"]:
             with tarfile.open(self.assets / f"sift_{target}.tar.gz", "w:gz") as archive:
                 for name in self.documentation:
                     if name in omit:
                         continue
-                    data = b"changed" if changed else (self.root / name).read_bytes()
+                    data = b"changed" if changed or name == changed_source else (self.root / name).read_bytes()
                     entry = tarfile.TarInfo(name)
                     entry.size = len(data)
                     archive.addfile(entry, io.BytesIO(data))
@@ -854,8 +904,13 @@ class PublicationTests(unittest.TestCase):
         for source in self.documentation:
             with self.subTest(source=source):
                 self.packages(omit=[source])
-                with self.assertRaisesRegex(ValueError, "missing required"):
+                with self.assertRaisesRegex(ValueError, "missing required") as failure:
                     self.ns["prepare"]()
+                self.assertIn(source, str(failure.exception))
+                self.packages(changed_source=source)
+                with self.assertRaisesRegex(ValueError, "do not match") as failure:
+                    self.ns["prepare"]()
+                self.assertIn(source, str(failure.exception))
         self.packages(changed=True)
         with self.assertRaisesRegex(ValueError, "do not match"):
             self.ns["prepare"]()

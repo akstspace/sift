@@ -33,9 +33,9 @@ def prepare():
                 try:
                     entry = archive.getmember(source)
                 except KeyError as error:
-                    raise ValueError("Release artifact is missing required documentation") from error
+                    raise ValueError(f"Release artifact {name} is missing required documentation: {source}") from error
                 if not entry.isfile() or archive.extractfile(entry).read() != (ROOT / source).read_bytes():
-                    raise ValueError("Release artifacts do not match this source checkout")
+                    raise ValueError(f"Release artifacts do not match this source checkout: {name}: {source}")
         checks.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {name}")
     (ASSETS / "checksums.txt").write_text("\n".join(checks) + "\n")
     notes = f"""Sift {version}
@@ -45,7 +45,7 @@ All packages passed CI race/integration, security, and native package smoke gate
 Verify checksums.txt before unpacking; keep THIRD_PARTY_NOTICES.md and licenses/.
 Installation adds the bin directory to shell PATH unless --no-modify-path is used.
 It does not start services or modify Pi or startup items.
-See README.md and docs/BUILDING.md for limitations and installation instructions.
+See README.md and docs/BUILDING.md for build and installation instructions.
 """
     (ASSETS / "release-notes.md").write_text(notes)
     return version

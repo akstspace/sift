@@ -14,13 +14,17 @@ npm run build
 npm test
 cd ..
 go test -race ./...
-go build -trimpath -o bin/sift ./cmd/sift
+go build -trimpath -o bin/sift-development ./cmd/sift
 ```
 
 `web` builds into `internal/sift/public`; Go embeds that directory. Platform
 build tags select exactly one RustFS payload. A binary built before a frontend
 change still contains the old UI until rebuilt. The Go service requires no
 external frontend server or runtime Node install in packaged use.
+
+Keep development executables separate from the installed `sift` command. Run
+`bin/sift-development serve --data .cache/development-workspace` for local work;
+do not install test builds on PATH or use the personal Sift data directory.
 
 Generated embedded frontend output is ignored by Git; the original project mark
 is the only placeholder retained there before a build. Always build `web` before
@@ -54,6 +58,11 @@ The script never creates a Git repository, commits, pushes, or publishes.
 and the Go development version. `scripts/version.py --bump patch|minor|major`
 updates those four declarations without committing or publishing. Package builds
 refuse mismatched versions and regenerate notices after the frontend build.
+Notice collection uses the union of Go dependencies for all three supported
+targets with `CGO_ENABLED=0`, so native build hosts produce the same consolidated
+notice document without omitting platform-specific licenses. Package preparation
+resolves all three verified RustFS payloads for this dependency inventory; each
+executable still embeds only its selected target's payload.
 Packages select dependency notices from the freshly generated
 `licenses/DEPENDENCIES.json`, plus the required RustFS and shadcn notices.
 Stale generated notices from removed dependencies are neither packaged nor

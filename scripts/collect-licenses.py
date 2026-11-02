@@ -2,6 +2,7 @@
 """Preserve installed dependency notices for local distribution. Never publishes."""
 import json
 import hashlib
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -57,6 +58,22 @@ def records(text):
         yield value
         text = text.lstrip()[end:]
 
+def collect_go_modules():
+    # Every package carries the same full notice set, independent of the host.
+    # Match release.py's supported targets and its pure-Go build configuration.
+    modules = {}
+    for goos, arch in [("darwin", "arm64"), ("linux", "arm64"), ("linux", "amd64")]:
+        deps = subprocess.check_output(["go", "list", "-deps", "-json", "./cmd/sift"], cwd=ROOT, text=True,
+                                       env=dict(os.environ, GOOS=goos, GOARCH=arch, CGO_ENABLED="0"))
+        for pkg in records(deps):
+            mod = pkg.get("Module")
+            if mod and not mod.get("Main"):
+                previous = modules.get(mod["Path"])
+                if previous and (previous["Version"], previous["Dir"]) != (mod["Version"], mod["Dir"]):
+                    raise ValueError("Inconsistent Go module across release targets: " + mod["Path"])
+                modules[mod["Path"]] = mod
+    return modules
+
 def preserve(source, folder):
     copied = []
     for file in sorted(source.iterdir()):
@@ -93,13 +110,7 @@ for name in sorted(names):
         files = [str(notice.relative_to(DEST))]
     index["npm"].append({"name": name, "version": pkg.get("version"), "license": pkg.get("license"), "repository": pkg.get("repository"), "files": files})
 
-modules = {}
-deps = subprocess.check_output(["go", "list", "-deps", "-json", "./cmd/sift"], cwd=ROOT, text=True)
-for pkg in records(deps):
-    mod = pkg.get("Module")
-    if mod and not mod.get("Main"):
-        modules[mod["Path"]] = mod
-for name, mod in sorted(modules.items()):
+for name, mod in sorted(collect_go_modules().items()):
     source = Path(mod["Dir"])
     files = preserve(source, DEST / "go" / name.replace("/", "__"))
     index["go"].append({"name": name, "version": mod["Version"], "files": files})
