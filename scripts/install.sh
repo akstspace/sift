@@ -7,6 +7,7 @@ command -v python3 >/dev/null 2>&1 || {
 }
 python3 - "$@" <<'PY'
 import argparse
+import fcntl
 import hashlib
 import io
 import json
@@ -14,7 +15,9 @@ import os
 from pathlib import Path, PurePosixPath
 import platform
 import re
+import shlex
 import shutil
+import stat
 import sys
 import tarfile
 import tempfile
@@ -86,7 +89,90 @@ def unpack(data, destination):
             target.chmod(0o755 if entry.name == "sift" else 0o644)
 
 
-def install(version, bin_dir, data_dir, replace=False):
+def path_configuration(bin_dir):
+    directory = str(bin_dir)
+    if any(character in directory for character in ("\n", "\r", "\x00", os.pathsep)):
+        raise ValueError("The bin directory cannot contain line breaks or PATH separators")
+    home = Path.home()
+    shell = Path(os.environ.get("SHELL") or "/bin/sh").name
+    quoted = shlex.quote(directory)
+    if shell == "fish":
+        config = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config").expanduser()
+        profiles = [config / "fish/conf.d/sift-path.fish"]
+        # Fish single quotes escape only backslashes and single quotes.
+        quoted = "'" + directory.replace("\\", "\\\\").replace("'", "\\'") + "'"
+        command = f"if not contains -- {quoted} $PATH\n    set -gx PATH $PATH {quoted}\nend"
+    else:
+        if shell == "zsh":
+            config = Path(os.environ.get("ZDOTDIR") or home).expanduser()
+            profiles = [config / ".zshrc"]
+        elif shell == "bash":
+            # Bash reads a different file for login and non-login terminals.
+            login = next((home / name for name in [".bash_profile", ".bash_login", ".profile"]
+                          if os.path.lexists(home / name)), home / ".profile")
+            profiles = [home / ".bashrc", login]
+        elif shell in {"sh", "dash", "ksh"}:
+            profiles = [home / ".profile"]
+        else:
+            raise ValueError(f"Automatic PATH setup is not supported for shell {shell}; add {quoted} manually")
+        # Append rather than shadow existing commands; guard every new shell.
+        command = f'case ":${{PATH-}}:" in\n    *:{quoted}:*) ;;\n    *) export PATH="${{PATH:+${{PATH}}:}}"{quoted} ;;\nesac'
+    if any(not profile.is_absolute() for profile in profiles):
+        raise ValueError("Shell configuration directories must be absolute")
+    marker = "Sift PATH " + hashlib.sha256(directory.encode()).hexdigest()[:16]
+    block = f"# >>> {marker} >>>\n{command}\n# <<< {marker} <<<\n"
+    return profiles, block, command
+
+
+def append_path_configuration(profile, block):
+    profile.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # Never follow a profile symlink or block on a special file. Existing content
+    # and permissions are preserved; only this directory's guarded block is added.
+    flags = os.O_RDWR | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK
+    descriptor = os.open(profile, flags, 0o600)
+    try:
+        metadata = os.fstat(descriptor)
+        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid()
+                or metadata.st_mode & 0o022 or metadata.st_size > 1 << 20):
+            raise ValueError(f"Refusing to edit unsafe or oversized shell configuration: {profile}")
+        output = os.fdopen(descriptor, "a+b")
+    except BaseException:
+        os.close(descriptor)
+        raise
+    with output:
+        fcntl.flock(output.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        output.seek(0)
+        original = output.read((1 << 20) + 1)
+        if len(original) > 1 << 20:
+            raise ValueError(f"Refusing to edit oversized shell configuration: {profile}")
+        encoded = block.encode()
+        if encoded in original:
+            return False
+        if block.splitlines()[0].encode() in original:
+            raise ValueError(f"Sift PATH block was edited; review it manually: {profile}")
+        separator = b"\n" if original.endswith(b"\n") or not original else b"\n\n"
+        output.write(separator + encoded)
+        output.flush()
+        os.fsync(output.fileno())
+    return True
+
+
+def configure_path(bin_dir):
+    profiles, block, command = path_configuration(bin_dir)
+    failures = []
+    for profile in profiles:
+        try:
+            changed = append_path_configuration(profile, block)
+            print(f"PATH {'updated in' if changed else 'already configured in'}: {profile}")
+        except (ValueError, OSError) as error:
+            failures.append(str(error))
+    for error in failures:
+        print(f"Warning: Sift is installed, but PATH setup was skipped: {error}", file=sys.stderr)
+    print("Open a new terminal, or apply this to the current shell:")
+    print(command)
+
+
+def install(version, bin_dir, data_dir, replace=False, modify_path=True):
     os_name = platform.system().lower()
     arch = {"aarch64": "arm64", "x86_64": "amd64"}.get(platform.machine(), platform.machine())
     target = os_name + "_" + arch
@@ -158,8 +244,13 @@ def install(version, bin_dir, data_dir, replace=False):
     print(f"Dependency notices and documentation: {destination}")
     print(f"Start explicitly: {link} serve")
     print("No service, login item, app/Dock shortcut, agent skill, or Pi changes were made.")
-    if str(bin_dir) not in os.environ.get("PATH", "").split(os.pathsep):
-        print(f"Add {bin_dir} to PATH yourself if desired; no shell profiles were edited.")
+    if modify_path:
+        try:
+            configure_path(bin_dir)
+        except (ValueError, OSError) as error:
+            print(f"Warning: Sift is installed, but automatic PATH setup was skipped: {error}", file=sys.stderr)
+    else:
+        print("PATH setup skipped (--no-modify-path); no shell profiles were edited.")
     return destination
 
 
@@ -169,9 +260,10 @@ def main():
     parser.add_argument("--bin-dir", default="~/.local/bin")
     parser.add_argument("--data-dir", default="~/.local/share/sift")
     parser.add_argument("--replace", action="store_true", help="Replace only a previously managed CLI symlink; retain old version files")
+    parser.add_argument("--no-modify-path", action="store_true", help="Do not add the bin directory to shell configuration")
     args = parser.parse_args()
     try:
-        install(args.version, args.bin_dir, args.data_dir, args.replace)
+        install(args.version, args.bin_dir, args.data_dir, args.replace, not args.no_modify_path)
     except (ValueError, OSError, tarfile.TarError) as error:
         parser.exit(1, f"Sift installation failed: {error}\n")
 

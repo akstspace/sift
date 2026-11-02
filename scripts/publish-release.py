@@ -43,7 +43,8 @@ def prepare():
 Native packages: macOS Apple silicon, Linux arm64, and Linux amd64.
 All packages passed CI race/integration, security, and native package smoke gates.
 Verify checksums.txt before unpacking; keep THIRD_PARTY_NOTICES.md and licenses/.
-Installation does not start services or modify Pi, shell profiles, or startup items.
+Installation adds the bin directory to shell PATH unless --no-modify-path is used.
+It does not start services or modify Pi or startup items.
 See README.md and docs/BUILDING.md for limitations and installation instructions.
 """
     (ASSETS / "release-notes.md").write_text(notes)
