@@ -1110,6 +1110,11 @@ class PublicationTests(unittest.TestCase):
     def test_prepare_requires_exact_packages_and_matching_documents(self):
         self.assertEqual(self.ns["prepare"](), "0.1.1")
         self.assertEqual(len((self.assets / "checksums.txt").read_text().splitlines()), 3)
+        notes = (self.assets / "release-notes.md").read_text()
+        self.assertIn("starts Sift and configures login startup unless --no-startup is used", notes)
+        self.assertIn("--no-modify-path", notes)
+        self.assertIn("does not install, update, or change your Pi configuration", notes)
+        self.assertNotIn("does not start services", notes)
         (self.assets / "sift_linux_amd64.tar.gz").unlink()
         with self.assertRaisesRegex(ValueError, "Exactly three"):
             self.ns["prepare"]()

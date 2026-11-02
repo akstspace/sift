@@ -44,7 +44,8 @@ Native packages: macOS Apple silicon, Linux arm64, and Linux amd64.
 All packages passed CI race/integration, security, and native package smoke gates.
 Verify checksums.txt before unpacking; keep THIRD_PARTY_NOTICES.md and licenses/.
 Installation adds the bin directory to shell PATH unless --no-modify-path is used.
-It does not start services or modify Pi or startup items.
+The installer starts Sift and configures login startup unless --no-startup is used.
+It does not install, update, or change your Pi configuration.
 See README.md and docs/BUILDING.md for build and installation instructions.
 """
     (ASSETS / "release-notes.md").write_text(notes)
