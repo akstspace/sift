@@ -1,3 +1,5 @@
+<img src="web/public/sift.svg" alt="Sift logo" width="80" height="80">
+
 # Sift
 
 A private, local-first task workspace for a person and their local agents.
