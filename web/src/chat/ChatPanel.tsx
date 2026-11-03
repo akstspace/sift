@@ -400,7 +400,7 @@ function Composer({ chat, view, draft, setDraft, composer, autoFocus, onSent }: 
         </div>
       </div>
       {(error || statuses.length > 0) && (
-        <p className={"composer-note" + (error ? " error" : "")} role={error ? "alert" : undefined}>{error || statuses.join(" · ")}</p>
+        <p className={"composer-note" + (error ? " is-error" : "")} role={error ? "alert" : undefined}>{error || statuses.join(" · ")}</p>
       )}
     </footer>
   );

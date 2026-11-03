@@ -152,7 +152,9 @@ function Thinking({ text, streaming, redacted }: { text: string; streaming: bool
       <AnimatePresence initial={false}>
         {open && (
           <motion.div id={id} className="thinking-body" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={reduced ? { duration: 0.1 } : { duration: 0.24, ease: settle }}>
-            <p>{text || "The model’s provider doesn’t share its thinking."}</p>
+            <div className="thinking-text">
+              {text ? <AgentMarkdown className={"thinking-markdown" + (streaming ? " streaming" : "")} text={text} /> : <p>The model’s provider doesn’t share its thinking.</p>}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -191,7 +193,7 @@ export function formatDuration(ms?: number) {
 function StatusMark({ status }: { status: ToolState["status"] }) {
   const label = { pending: "Starting", running: "Running", done: "Done", error: "Failed", unknown: "No result" }[status];
   return (
-    <span className={"tool-status " + status} role="img" aria-label={label}>
+    <span className="tool-status" data-status={status} role="img" aria-label={label}>
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.span key={status === "pending" ? "running" : status} className="tool-status-glyph" initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6 }} transition={{ duration: 0.18, ease: settle }}>
           {status === "running" || status === "pending" ? <Loader size={13} className="spin" /> : status === "done" ? <Check size={13} /> : status === "error" ? <X size={13} /> : <CircleDashed size={13} />}
@@ -203,6 +205,8 @@ function StatusMark({ status }: { status: ToolState["status"] }) {
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 const basename = (p: string) => p.replace(/\/+$/, "").split("/").pop() || p;
+/** Output without blank lines at either end, and no gap taller than one blank line. */
+export const tidyOutput = (text: string) => text.replace(/^(?:[ \t]*\n)+/, "").trimEnd().replace(/\n(?:[ \t]*\n){2,}/g, "\n\n");
 /** "read: notes.md" without its "read: ". Tool names come from extensions, so never a RegExp. */
 const unprefixed = (text: string, prefix: string) => (text.startsWith(prefix) ? text.slice(prefix.length) : text);
 
@@ -254,7 +258,7 @@ const ToolRow = memo(function ToolRow({ tool }: { tool: ToolState }) {
   const running = tool.status === "running" || tool.status === "pending";
   const tail = running && tool.live ? tool.live.trimEnd().split("\n").slice(-3).join("\n") : "";
   return (
-    <div className={"tool-row " + tool.status + (open ? " open" : "")}>
+    <div className={"tool-row" + (open ? " open" : "")} data-status={tool.status}>
       <button type="button" className="tool-head" aria-expanded={open} aria-controls={id} onClick={() => setOpen(v => !v)} title={line.title}>
         <Icon size={14} className="tool-icon" aria-hidden />
         <span className="tool-label">
@@ -295,8 +299,8 @@ function ToolDetails({ tool }: { tool: ToolState }) {
     if (where) parts.push(<p key="path" className="tool-path">{where}</p>);
   } else if (Object.keys(a).length) parts.push(<pre key="args" className="tool-args">{JSON.stringify(a, null, 2)}</pre>);
   else if (tool.summary) parts.push(<p key="summary" className="tool-path">{tool.summary}</p>);
-  if (output && tool.name !== "write" && tool.name !== "edit") parts.push(<pre key="out" className={"tool-output" + (tool.status === "error" ? " error" : "")}>{output.replace(/\s+$/, "")}</pre>);
-  else if (output && tool.status === "error") parts.push(<pre key="out" className="tool-output error">{output}</pre>);
+  if (output && tool.name !== "write" && tool.name !== "edit") parts.push(<pre key="out" className={"tool-output" + (tool.status === "error" ? " is-error" : "")}>{tidyOutput(output)}</pre>);
+  else if (output && tool.status === "error") parts.push(<pre key="out" className="tool-output is-error">{output}</pre>);
   for (const [i, img] of (tool.images || []).entries()) if (img.data) parts.push(<img key={"img" + i} className="tool-image" src={imageSrc(img)} alt={`Image from ${tool.name}`} />);
   if (!parts.length) parts.push(<p key="none" className="tool-path">{tool.status === "running" ? "Waiting for output…" : "No output"}</p>);
   return <>{parts}</>;
@@ -343,12 +347,12 @@ function SiftCard({ op, tool, lookups, catalog, onOpenTask, onOpenRun }: CardPro
   const details = (
     <div className="sift-details">
       <pre className="tool-command"><span aria-hidden>$ </span>{str(tool.args.command)}</pre>
-      {tool.output && <pre className={"tool-output" + (tool.status === "error" ? " error" : "")}>{tool.output.replace(/\s+$/, "")}</pre>}
+      {tool.output && <pre className={"tool-output" + (tool.status === "error" ? " is-error" : "")}>{tidyOutput(tool.output)}</pre>}
     </div>
   );
   if (quiet) {
     return (
-      <div className={"tool-row sift-row " + tool.status + (open ? " open" : "")}>
+      <div className={"tool-row sift-row" + (open ? " open" : "")} data-status={tool.status}>
         <button type="button" className="tool-head" aria-expanded={open} aria-controls={id} onClick={() => setOpen(v => !v)}>
           <Icon size={14} className="tool-icon" aria-hidden />
           <span className="tool-label"><span className="tool-verb">{op.verb}</span>{op.detail && <span className="tool-detail">{op.detail}</span>}</span>
@@ -376,7 +380,7 @@ function SiftCard({ op, tool, lookups, catalog, onOpenTask, onOpenRun }: CardPro
   return (
     <section className={"sift-card" + (op.error ? " failed" : "") + (running ? " running" : "")} aria-label={op.verb}>
       <header>
-        <span className="sift-glyph"><Glyph size={15} aria-hidden /></span>
+        <span className="sift-glyph"><Glyph size={14} aria-hidden /></span>
         <span className="sift-verb"><span className={running ? "shimmer" : ""}>{op.verb}</span>{op.detail && <span className="tool-detail">{op.detail}</span>}</span>
         {!op.error && <StatusMark status={tool.status} />}
         <button type="button" className="sift-details-toggle" aria-expanded={open} aria-controls={id} onClick={() => setOpen(v => !v)} aria-label={(open ? "Hide" : "Show") + " command and output"} title="Command and output">

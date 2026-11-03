@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { Transcript, contextLabel, formatDuration, toolLine, type TranscriptProps } from "./Transcript";
+import { Transcript, contextLabel, formatDuration, tidyOutput, toolLine, type TranscriptProps } from "./Transcript";
 import type { Item, ToolState } from "./model";
 import type { Lookups } from "./siftOps";
 import { catalogFixture, snapshotFixture, taskFixture } from "../test/fixtures";
@@ -53,6 +53,21 @@ describe("transcript", () => {
     fireEvent.click(screen.getByRole("button", { name: "Thinking hidden" }));
     expect(screen.getByText("The model’s provider doesn’t share its thinking.")).toBeDefined();
     expect(screen.getByText("Thinking…").className).toBe("shimmer");
+  });
+  it("renders thinking as Markdown, raw HTML still as text", () => {
+    const { container } = show([
+      { kind: "thinking", key: "a", text: "**Planning the day**\n\n- Read `tasks list`\n- Check duplicates\n\n<b>not bold</b>" },
+      { kind: "thinking", key: "b", text: "Going", streaming: true },
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Thought" }));
+    fireEvent.click(screen.getByRole("button", { name: "Thinking…" }));
+    const [done, live] = container.querySelectorAll(".thinking-markdown");
+    expect(within(done as HTMLElement).getByText("Planning the day").tagName).toBe("STRONG");
+    expect([...done.querySelectorAll("li")].map(li => li.textContent)).toEqual(["Read tasks list", "Check duplicates"]);
+    expect(done.querySelector("code")?.textContent).toBe("tasks list");
+    expect(done.querySelector("b")).toBeNull();
+    expect(done.textContent).toContain("<b>not bold</b>");
+    expect(live.className).toContain("streaming");
   });
   it("renders replies as Markdown and errors as alerts", () => {
     const { container } = show([
@@ -111,6 +126,11 @@ describe("transcript", () => {
 });
 
 describe("tool rows", () => {
+  it("tidies blank lines out of output without touching indentation", () => {
+    expect(tidyOutput("\n  \n--- slk on PATH ---\n\n\n\nCommand exited with code 1\n\n")).toBe("--- slk on PATH ---\n\nCommand exited with code 1");
+    expect(tidyOutput("  indented\n\n  still\n \t\n\t\nend")).toBe("  indented\n\n  still\n\nend");
+    expect(tidyOutput("one\ntwo")).toBe("one\ntwo");
+  });
   it("describes Pi's built-in tools in a line", () => {
     const line = (name: string, args: Record<string, unknown>, summary?: string) => {
       const l = toolLine({ id: "x", name, args, status: "done", summary });
@@ -158,7 +178,7 @@ describe("tool rows", () => {
     }],
     ["a single edit that failed", { name: "edit", args: { path: "/a/x.ts", oldText: "a", newText: "b" }, status: "error", output: "No match" }, c => {
       expect(c.querySelector(".tool-diff")?.textContent).toBe("- a\n+ b\n");
-      expect(c.querySelector(".tool-output.error")?.textContent).toBe("No match");
+      expect(c.querySelector(".tool-output.is-error")?.textContent).toBe("No match");
     }],
     ["a written file", { name: "write", args: { path: "/a/n.md", content: "# Notes" }, output: "Wrote 7 bytes" }, c => {
       expect(c.querySelector(".tool-output")?.textContent).toBe("# Notes");
@@ -172,7 +192,11 @@ describe("tool rows", () => {
     ["a bare listing", { name: "ls", args: {} }, c => expect(c.querySelector(".tool-body")?.textContent).toBe("No output")],
     ["another tool's arguments", { name: "web_fetch", args: { url: "https://x" }, status: "error", output: "403" }, c => {
       expect(JSON.parse(c.querySelector(".tool-args")!.textContent!)).toEqual({ url: "https://x" });
-      expect(c.querySelector(".tool-output.error")?.textContent).toBe("403");
+      expect(c.querySelector(".tool-output.is-error")?.textContent).toBe("403");
+      // The page's .error class draws a padded alert box; a failed row only marks its status.
+      expect(c.querySelector(".error")).toBeNull();
+      expect(c.querySelector(".tool-row")?.getAttribute("data-status")).toBe("error");
+      expect(c.querySelector(".tool-status")?.getAttribute("data-status")).toBe("error");
     }],
     ["an older run's summary", { name: "tool", args: {}, summary: "read local file", status: "unknown" }, c => expect(c.querySelector(".tool-body .tool-path")?.textContent).toBe("read local file")],
     ["a tool still waiting", { name: "custom", args: {}, status: "running" }, c => expect(c.querySelector(".tool-body")?.textContent).toBe("Waiting for output…")],
@@ -215,7 +239,7 @@ describe("Sift cards", () => {
     expect(card.querySelector(".sift-error")?.textContent).toBe("Task not found");
     expect(within(card).queryByRole("img", { name: "Failed" })).toBeNull();
     fireEvent.click(within(card).getByRole("button", { name: "Show command and output" }));
-    expect(card.querySelector(".tool-output.error")?.textContent).toContain("Task not found");
+    expect(card.querySelector(".tool-output.is-error")?.textContent).toContain("Task not found");
   });
   it("shows each task's state in the workspace now", () => {
     const merge = (ids: string[]) => tool({ args: { command: `${SIFT} tasks merge ${ids[0]} --into ${ids[1]}` }, output: JSON.stringify({ merged: { id: ids[0] }, task: { id: ids[1] } }) });

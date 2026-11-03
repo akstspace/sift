@@ -17,15 +17,15 @@ generates its own evidence artifacts from the retained build and test inputs.
 
 ## Frontend verification
 
-The latest strict frontend run passes **373 tests in 29 test files**, covering
+The latest strict frontend run passes **375 tests in 29 test files**, covering
 all **65 application TypeScript/TSX files**:
 
 | Metric | Covered / total | Result |
 | --- | ---: | ---: |
-| Statements | 3078 / 3093 | 99.51% |
-| Branches | 3000 / 3069 | 97.75% |
-| Functions | 1054 / 1066 | 98.87% |
-| Lines | 2278 / 2281 | 99.86% |
+| Statements | 3082 / 3095 | 99.57% |
+| Branches | 3002 / 3071 | 97.75% |
+| Functions | 1055 / 1067 | 98.87% |
+| Lines | 2279 / 2282 | 99.86% |
 
 Scope is `web/src/**/*.{ts,tsx}` excluding tests, test setup/fixtures, and type
 declarations, not a hand-picked subset of components. The strict command sets

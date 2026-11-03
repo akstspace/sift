@@ -206,7 +206,7 @@ def say(text, thinking="", delay=0.025):
 def demo(cli):
     exe, data = cli.group(1), cli.group(2)
     sift = '"%s" --data "%s" ' % (exe, data)
-    say("Let me look at what's on your plate first.", thinking="The person wants their day organized. I'll read the tasks, add the passport renewal, and close out anything finished.")
+    say("Let me look at what's on your plate first.", thinking="**Planning the day**\n\nThe person wants their day organized. I'll:\n\n- read the tasks with `tasks list`\n- add the passport renewal\n- close out anything finished")
     tool("call_list", "bash", {"command": sift + "tasks list"}, bash(sift + "tasks list"))
     tasks = json.loads(bash(sift + "tasks list")()[0] or "[]")
     send({"type": "turn_end"}); send({"type": "turn_start"})
@@ -222,6 +222,7 @@ def demo(cli):
     tool("call_fail", "bash", {"command": cmd}, bash(cmd))
     tool("call_read", "read", {"path": os.path.expanduser("~/Notes/passport.md")}, lambda: ("# Passport\nExpires 2026-12-01\nForm DS-82 needed\n", False), 0.4)
     tool("call_ls", "bash", {"command": "ls -1 ~/Documents | head -5"}, lambda: ("Invoices\nNotes\nPhotos\nReceipts\nTaxes", False), 0.3)
+    tool("call_which", "bash", {"command": "printf '\\n--- slk on PATH ---\\n'; command -v slk"}, lambda: ("\n--- slk on PATH ---\n\n\nCommand exited with code 1", True), 0.2)
     tool("call_edit", "edit", {"path": os.path.expanduser("~/Notes/passport.md"), "oldText": "Form DS-82 needed", "newText": "Form DS-82 needed\nPhoto booked for Thursday"}, lambda: ("Edited 1 place", False), 0.2)
     say("Done. Here's where things stand:\n\n- Added **Renew passport** for today, due Nov 14, marked high priority.\n- Marked one finished task as done.\n- One update failed because that task doesn't exist, so I left it alone.\n\n| Next | When |\n|---|---|\n| Fill in form DS-82 | Today |\n| Passport photo | Thursday |\n\nWant me to set a reminder for the photo?")
     finish()
