@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -20,6 +21,9 @@ import (
 )
 
 const archiveLimit = 800 << 20
+
+// maxSessionFile bounds each Pi session file a backup carries or restores.
+const maxSessionFile = 64 << 20
 
 var backupKinds = []string{"task", "column", "project", "tag", "job", "run", "attachment", "notification", "settings"}
 
@@ -52,6 +56,16 @@ func (s *Service) beginMaintenance() (func(), error) {
 	}
 	s.maintenance = true
 	s.runMu.Unlock()
+	// Pi keeps the chat's session file open; stop it so backups and restores
+	// see a settled session. The next message resumes the conversation.
+	if s.chat.busy() {
+		s.runMu.Lock()
+		s.maintenance = false
+		s.runMu.Unlock()
+		s.dataMu.Unlock()
+		return nil, conflict("Wait for the chat reply to finish, then try again")
+	}
+	s.chat.stop("maintenance")
 	s.Store.mu.Lock()
 	return func() {
 		s.Store.mu.Unlock()
@@ -174,12 +188,18 @@ func (s *Service) backupLockedContext(ctx context.Context) (string, error) {
 		if e != nil {
 			return e
 		}
-		if !info.Mode().IsRegular() || info.Size() > 64<<20 {
-			return invalid("Invalid or oversized session file: %s", p)
-		}
 		rel, e := filepath.Rel(root, p)
 		if e != nil {
 			return e
+		}
+		if info.Mode().IsRegular() && info.Size() > maxSessionFile && strings.HasPrefix(filepath.ToSlash(rel), "chat/") {
+			// A long chat with many pasted images can outgrow the limit. Leave
+			// it out rather than fail every backup; job memory stays required.
+			log.Printf("Backup left out the chat conversation %s: it is over 64 MB. Start a new chat with /new.", filepath.ToSlash(rel))
+			return nil
+		}
+		if !info.Mode().IsRegular() || info.Size() > maxSessionFile {
+			return invalid("Invalid or oversized session file: %s", p)
 		}
 		b, e := os.ReadFile(p)
 		if e != nil {
@@ -411,7 +431,7 @@ func (s *Service) restore(ctx context.Context, b []byte) error {
 		if !strings.HasPrefix(n, "sessions/") {
 			continue
 		}
-		if len(v) > 64<<20 {
+		if len(v) > maxSessionFile {
 			return invalid("Session file exceeds 64 MB")
 		}
 		dest := filepath.Join(stage, filepath.FromSlash(strings.TrimPrefix(n, "sessions/")))

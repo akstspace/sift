@@ -17,15 +17,15 @@ generates its own evidence artifacts from the retained build and test inputs.
 
 ## Frontend verification
 
-The latest strict frontend run passes **206 tests in 20 test files**, covering
-all **52 application TypeScript/TSX files**:
+The latest strict frontend run passes **373 tests in 29 test files**, covering
+all **65 application TypeScript/TSX files**:
 
 | Metric | Covered / total | Result |
 | --- | ---: | ---: |
-| Statements | 1533 / 1533 | 100% |
-| Branches | 1305 / 1305 | 100% |
-| Functions | 690 / 690 | 100% |
-| Lines | 1252 / 1252 | 100% |
+| Statements | 3078 / 3093 | 99.51% |
+| Branches | 3000 / 3069 | 97.75% |
+| Functions | 1054 / 1066 | 98.87% |
+| Lines | 2278 / 2281 | 99.86% |
 
 Scope is `web/src/**/*.{ts,tsx}` excluding tests, test setup/fixtures, and type
 declarations, not a hand-picked subset of components. The strict command sets
@@ -110,6 +110,32 @@ selection. Shared Go/TypeScript search vectors and all-icon generation checks
 pass; no custom SVG upload, runtime remote fetch, legacy mapping, or migration
 was introduced.
 
+### Chat acceptance
+
+Automated tests cover the chat's backend (session start, resume and replacement,
+steering, stop, questions, model choice, maintenance, event relay, idle stop)
+under the race detector, and its UI (pill states, Cmd/Ctrl+J and Escape, focus,
+streaming, queued messages, questions of every kind, model and thinking choice,
+slash commands, images, view sharing, provider errors). Sift commands are parsed
+without a shell and described from the CLI's own JSON.
+
+A local Chrome run against a scripted Pi that drives the real Sift CLI checks the
+pill-to-panel morph in both directions, keyboard focus on open and close, task
+chips opening task details, Cmd+J being held while a dialog is open, an inline
+question, a provider refusal, `/new`, and the phone sheet, with **zero axe
+violations** in nine light, dark, and phone states. Run history's transcript
+check passes at six sizes with zero axe violations. Opening a long conversation
+on a phone-sized view measured no long tasks after task icons stopped using the
+icon sprite for the default icon.
+
+At the person's request, the chat was also run with their real local Pi on
+**provider `tokenplex`, model `gpt-6.1-sol`**, low thinking, in a throwaway
+workspace: Pi read the CLI help, checked for duplicates before adding a task,
+pointed out a likely duplicate and asked before merging, and completed a task
+with the person's reason. Every Sift command appeared as a card with the live
+task. Screenshots are in `docs/verification/chat/`. This is bounded evidence of
+the real path, not of every model or tool.
+
 This is bounded review evidence, not a claim that Chromium testing proves
 Safari/Firefox or all assistive-technology behavior.
 
@@ -170,11 +196,11 @@ The latest complete passing macOS arm64 run records:
 | Package | Covered / total statements | Result |
 | --- | ---: | ---: |
 | CLI entry point (`cmd/sift`) | 5 / 5 | 100% |
-| Application backend (`internal/sift`) | 2,724 / 2,765 | 98.52% |
-| Combined Go application | 2,729 / 2,770 | 98.52% |
+| Application backend (`internal/sift`) | 3,934 / 4,024 | 97.76% |
+| Combined Go application | 3,939 / 4,029 | 97.77% |
 
 The owner selected **95%** as the backend statement coverage gate; this recorded
-**98.52%** passes that threshold. It is not 100% coverage. Go reports statements, not frontend branch or
+**97.77%** passes that threshold. It is not 100% coverage. Go reports statements, not frontend branch or
 function coverage. The unmodified local raw profile
 `docs/verification/backend-coverage.out`, `backend-coverage.json` source hashes,
 and `backend-coverage.html` preserve the measured scope. No
@@ -182,7 +208,7 @@ application files/blocks are excluded and subprocess/runtime profiles are not
 silently added. Platform-specific Linux startup code is not executed by this
 macOS suite.
 
-The remaining **41 backend statements** are listed exactly in the raw/JSON/HTML
+The remaining **90 backend statements** are listed exactly in the raw/JSON/HTML
 reports. They include filesystem write/sync/rename failures, low-level SQLite
 initialization failures, Pi process-pipe failures, updater replacement in a child
 process, and platform-specific startup paths. Some guard failures are unreachable with the statically embedded

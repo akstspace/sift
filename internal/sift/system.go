@@ -128,6 +128,25 @@ func allowedReleaseURL(v string) bool {
 	return strings.HasPrefix(v, "https://github.com/akstspace/sift/releases/download/")
 }
 
+// updateRefreshInterval bounds how often opening or reloading Sift asks GitHub
+// for the latest release; GitHub limits anonymous requests per address.
+var updateRefreshInterval = 2 * time.Minute
+
+// RefreshUpdate checks for a new release when the page loads. It respects the
+// "Check for updates" setting and reuses a result younger than
+// updateRefreshInterval, so reloads never hammer GitHub.
+func (s *Service) RefreshUpdate(ctx context.Context) UpdateInfo {
+	var cfg Settings
+	s.Store.Get("settings", "app", &cfg)
+	s.updateMu.Lock()
+	info := s.update
+	s.updateMu.Unlock()
+	if !cfg.CheckUpdates || time.Since(info.CheckedAt) < updateRefreshInterval {
+		return info
+	}
+	return s.CheckUpdate(ctx)
+}
+
 // Clone the configured client so tests and callers keep their transport, while
 // no redirect can downgrade TLS or leave GitHub's release delivery hosts.
 func releaseClient() *http.Client {

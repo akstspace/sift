@@ -11,14 +11,14 @@ let reload: ReturnType<typeof vi.spyOn>;
 beforeEach(() => { mock.mockReset(); reload = vi.spyOn(page, "reload").mockImplementation(() => {}); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); reload.mockRestore(); });
 function mount(value: UpdateStatus | Error, runningAgents = 0) {
-  mock.mockImplementation(async path => { if (path === "/update") { if (value instanceof Error) throw value; return value; } return {}; });
+  mock.mockImplementation(async path => { if (path === "/update/refresh") { if (value instanceof Error) throw value; return value; } return {}; });
   const user = userEvent.setup({ advanceTimers: ms => { if (vi.isFakeTimers()) vi.advanceTimersByTime(ms); } });
   return { ...render(<UpdateNotice version="0.1.2" runningAgents={runningAgents} />, { wrapper: TestProviders }), user };
 }
 describe("update notice", () => {
   it.each([status({ available: false }), new Error("offline")])("stays out of the way when there is nothing to do (%#)", async value => {
     const { container } = mount(value);
-    await waitFor(() => expect(mock).toHaveBeenCalledWith("/update"));
+    await waitFor(() => expect(mock).toHaveBeenCalledWith("/update/refresh", "POST", {}));
     expect(container.textContent).toBe("");
   });
   it("installs the available release and then offers a restart that reloads once the new Sift answers", async () => {
@@ -46,7 +46,7 @@ describe("update notice", () => {
   it("follows Sift's own restart after installing, without asking to restart", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const { user } = mount(status());
-    mock.mockImplementation(async path => path === "/update" ? status() : path === "/update/apply" ? { installed: "v0.1.3", restartRequired: true, restarting: true } : {});
+    mock.mockImplementation(async path => path === "/update/refresh" ? status() : path === "/update/apply" ? { installed: "v0.1.3", restartRequired: true, restarting: true } : {});
     const fetch = vi.fn().mockRejectedValueOnce(new TypeError("connection refused")).mockResolvedValueOnce({ status: 401, ok: false, json: async () => ({}) });
     vi.stubGlobal("fetch", fetch);
     await user.click(await screen.findByRole("button", { name: "Sift 0.1.3 is available" }));
@@ -103,7 +103,7 @@ describe("update notice", () => {
     await user.click(screen.getByRole("button", { name: "Install update" }));
     expect((await screen.findByRole("alert")).textContent).toBe("Release checksum does not match; installation refused");
     expect(screen.getByRole("button", { name: "Install update" })).toBeDefined();
-    mock.mockImplementation(async path => path === "/update" ? status({ installed: "v0.1.3", restartRequired: true }) : {});
+    mock.mockImplementation(async path => path === "/update/refresh" ? status({ installed: "v0.1.3", restartRequired: true }) : {});
     await act(async () => { window.dispatchEvent(new Event(UPDATE_CHANGED)); });
     expect(await screen.findByRole("heading", { name: "Sift 0.1.3 is installed" })).toBeDefined();
     mock.mockRejectedValueOnce(new Error("Wait for running agents or maintenance to finish, then restart"));

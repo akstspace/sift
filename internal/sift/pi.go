@@ -26,6 +26,7 @@ type Pi struct {
 	done      chan struct{}
 	stop      chan struct{}
 	stderr    bytes.Buffer
+	errDone   chan struct{}
 	errMu     sync.Mutex
 	exitErr   error
 	closeOnce sync.Once
@@ -48,7 +49,7 @@ func PiPath() string {
 	return "pi"
 }
 func StartPi(dir string, args ...string) (*Pi, error) {
-	p := &Pi{pending: map[string]chan map[string]any{}, events: make(chan map[string]any, 1024), done: make(chan struct{}), stop: make(chan struct{})}
+	p := &Pi{pending: map[string]chan map[string]any{}, events: make(chan map[string]any, 1024), done: make(chan struct{}), stop: make(chan struct{}), errDone: make(chan struct{})}
 	p.cmd = exec.Command(PiPath(), append([]string{"--mode", "rpc"}, args...)...)
 	p.cmd.Dir = dir
 	p.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -69,6 +70,7 @@ func StartPi(dir string, args ...string) (*Pi, error) {
 		return nil, fmt.Errorf("Cannot start local Pi: %w", err)
 	}
 	go func() {
+		defer close(p.errDone)
 		buf := make([]byte, 8192)
 		for {
 			n, e := stderr.Read(buf)
@@ -111,6 +113,12 @@ func StartPi(dir string, args ...string) (*Pi, error) {
 				case <-p.stop:
 				}
 			}
+		}
+		// Let stderr reach EOF so a failure can be explained, without waiting
+		// on a background process that inherited it.
+		select {
+		case <-p.errDone:
+		case <-time.After(500 * time.Millisecond):
 		}
 		p.exitErr = p.cmd.Wait()
 		close(p.done)
@@ -179,6 +187,27 @@ func (p *Pi) Close() {
 			}
 		}
 	})
+}
+
+// Send writes one record that expects no response, such as an answer to an
+// extension's question.
+func (p *Pi) Send(record map[string]any) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	_, err := p.in.Write(append(encode(record), '\n'))
+	return err
+}
+
+// stderrTail is the last line or two Pi wrote to stderr, to explain a failure.
+func (p *Pi) stderrTail() string {
+	p.errMu.Lock()
+	text := strings.TrimSpace(p.stderr.String())
+	p.errMu.Unlock()
+	lines := strings.Split(text, "\n")
+	if len(lines) > 2 {
+		lines = lines[len(lines)-2:]
+	}
+	return clip(strings.TrimSpace(strings.Join(lines, " ")), 400)
 }
 func (p *Pi) Abort() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -304,14 +333,24 @@ func (s *Service) executeRun(ctx context.Context, job Job, run Run) {
 	}
 	var text strings.Builder
 	var failure string
+	// Streamed text and thinking are batched per kind, so the transcript keeps
+	// their order without one entry per token.
 	var pending strings.Builder
+	pendingKind := ""
 	ticker := time.NewTicker(150 * time.Millisecond)
 	defer ticker.Stop()
 	flush := func() {
 		if pending.Len() > 0 {
-			s.Store.AddLog(run.ID, RunEntry{Type: "text", Text: pending.String()})
+			s.Store.AddLog(run.ID, RunEntry{Type: pendingKind, Text: pending.String()})
 			pending.Reset()
 		}
+	}
+	stream := func(kind, delta string) {
+		if kind != pendingKind {
+			flush()
+			pendingKind = kind
+		}
+		pending.WriteString(delta)
 	}
 	for {
 		select {
@@ -334,18 +373,34 @@ func (s *Service) executeRun(ctx context.Context, job Job, run Run) {
 			kind, _ := e["type"].(string)
 			switch kind {
 			case "message_update":
-				if update, ok := e["assistantMessageEvent"].(map[string]any); ok && update["type"] == "text_delta" {
-					delta, _ := update["delta"].(string)
-					text.WriteString(delta)
-					pending.WriteString(delta)
+				if update, ok := e["assistantMessageEvent"].(map[string]any); ok {
+					delta := eventString(update, "delta")
+					switch update["type"] {
+					case "text_delta":
+						text.WriteString(delta)
+						stream("text", delta)
+					case "thinking_delta":
+						stream("thinking", delta)
+					}
 				}
 			case "tool_execution_start":
 				flush()
-				s.Store.AddLog(run.ID, RunEntry{Type: "tool", Tool: fmt.Sprint(e["toolName"]), Text: "Running " + fmt.Sprint(e["toolName"])})
-			case "tool_execution_end":
-				if e["isError"] == true {
-					s.Store.AddLog(run.ID, RunEntry{Type: "tool-error", Tool: fmt.Sprint(e["toolName"]), Text: "Tool reported an error; inspect Pi session for details"})
+				name, args := eventString(e, "toolName"), map[string]any{}
+				if a, ok := e["args"].(map[string]any); ok {
+					args = a
 				}
+				s.Store.AddLog(run.ID, RunEntry{Type: "tool", Tool: name, Call: eventString(e, "toolCallId"), Args: clipArgs(args), Text: toolSummary(name, args)})
+			case "tool_execution_end":
+				flush()
+				name := eventString(e, "toolName")
+				entry := RunEntry{Type: "tool-result", Tool: name, Call: eventString(e, "toolCallId"), Output: clip(toolOutput(e["result"]), maxToolOutput), Text: name + " finished"}
+				if e["isError"] == true {
+					entry.Error, entry.Text = true, name+" reported an error"
+				}
+				if d, ok := e["durationMs"].(float64); ok {
+					entry.DurationMs = int64(d)
+				}
+				s.Store.AddLog(run.ID, entry)
 			case "message_end":
 				if msg, ok := e["message"].(map[string]any); ok && msg["role"] == "assistant" && msg["stopReason"] == "error" {
 					failure = fmt.Sprint(msg["errorMessage"])

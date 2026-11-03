@@ -26,9 +26,13 @@ def emit(scenario):
     if scenario == "hang":
         stopped.wait()
         return
+    send({"type": "message_update", "assistantMessageEvent": {"type": "thinking_delta", "delta": "Checking the "}})
+    send({"type": "message_update", "assistantMessageEvent": {"type": "thinking_delta", "delta": "fixture notes."}})
     send({"type": "message_update", "assistantMessageEvent": {"type": "text_delta", "delta": "Fixture evidence."}})
-    send({"type": "tool_execution_start", "toolName": "read"})
-    send({"type": "tool_execution_end", "toolName": "read", "isError": scenario == "tool-error"})
+    send({"type": "tool_execution_start", "toolCallId": "call_read", "toolName": "read", "args": {"path": "notes.md", "content": "x" * 5000}})
+    send({"type": "tool_execution_end", "toolCallId": "call_read", "toolName": "read", "durationMs": 42,
+          "result": {"content": [{"type": "text", "text": "line one\n" * 3000}, {"type": "image", "data": "AAAA", "mimeType": "image/png"}]},
+          "isError": scenario == "tool-error"})
     if scenario in ("auth", "failed"):
         send({"type": "message_end", "message": {"role": "assistant", "stopReason": "error", "errorMessage": "Authentication required" if scenario == "auth" else "Upstream network failure"}})
     if scenario == "maintenance":

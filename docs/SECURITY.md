@@ -21,6 +21,10 @@ are rejected. RustFS is private and reached through Sift, not a public bucket.
 - Pi runs with your local permissions, extensions, and provider configuration.
   An authorized job can execute tools or send prompt context to a configured
   provider. Enabling image inclusion explicitly allows attached images too.
+  The chat runs Pi the same way, in your home folder: what you ask it, the
+  view you share, and pasted images go to your configured provider, and its
+  tools can act anywhere your account can. Only the person's browser session
+  can use the chat; CLI tokens, jobs, and the chat's own Pi are refused.
 - Backups contain sensitive job memory and tool output. Pi login credentials
   are excluded, but credentials accidentally written into a prompt/log may be
   included. Review and protect backups before sharing.

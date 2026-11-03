@@ -172,6 +172,36 @@ func TestBackupFailuresRemovePartialFilesAndReleaseMaintenance(t *testing.T) {
 	}
 }
 
+func TestBackupLeavesOutAnOversizedChatButKeepsTheRest(t *testing.T) {
+	s := testService(t)
+	chat := filepath.Join(s.Dir, "sessions", "chat")
+	if err := os.MkdirAll(chat, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(chat, "chat_small.jsonl"), []byte(`{"type":"session"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(filepath.Join(chat, "chat_large.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = f.Truncate(maxSessionFile + 1)
+	f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(s.Dir, "sessions", "job.jsonl"), []byte(`{"type":"session"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	files := backupFiles(t, s)
+	if _, ok := files["sessions/chat/chat_large.jsonl"]; ok {
+		t.Fatal("oversized chat conversation was archived")
+	}
+	if string(files["sessions/chat/chat_small.jsonl"]) != `{"type":"session"}` || string(files["sessions/job.jsonl"]) != `{"type":"session"}` {
+		t.Fatal("other sessions missing from the backup", len(files))
+	}
+}
+
 func TestRestoreMaintenanceAndPreflightFailuresAreNonDestructive(t *testing.T) {
 	s := testService(t)
 	task := mustTask(t, s.Store, Task{Title: "Unchanged on failed restore"})

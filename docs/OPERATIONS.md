@@ -171,6 +171,53 @@ changes nothing else. Only the person can delete a job, from its editor. Deletin
 removes the job and its remembered session; its runs stay in Run history, and a
 running job must be cancelled first.
 
+## Chat with Pi
+
+The **Ask Pi** pill at the bottom of the workspace (or Cmd/Ctrl+J) opens a chat
+with your local Pi. Escape or the chevron closes it; the panel reopens where you
+left it. Pi starts the first time the panel opens, in your home folder, with
+your usual Pi tools, extensions, and login, and stops after 15 minutes without a
+reply or question. The next message starts it again in the same conversation.
+
+- **One conversation.** The chat keeps a single Pi session in
+  `sessions/chat` inside the data directory. `/new` (or the new-chat button)
+  starts a fresh session with no earlier context; the old one stays on disk. If
+  Pi cannot open the saved session, Sift starts a new one, says so, and keeps
+  the old file, so a broken session never blocks the chat.
+- **What Pi sees.** Each message carries the page you are on, the open task or
+  run, and the search, unless you switch the view chip off for that message.
+  Slash commands never carry it. Pi is told to use the Sift CLI as `--actor chat`,
+  to check for duplicates before adding, and to ask before merging or deleting.
+- **What you see.** Sift commands appear as cards: the task (opening it on
+  click, with its live status, or *In Trash*, *Merged*, *Archived*), what
+  changed, the reason given, and the command and output on demand. Reads stay
+  quiet one-line rows. Other tools show as collapsible rows (shell commands,
+  reads, edits as diffs, writes), and thinking collapses to *Thought*. Run
+  history uses the same view for scheduled jobs.
+- **Steering and stopping.** A message sent while Pi works is queued and read
+  after the current step; **Stop** cancels the reply and the queue.
+- **Questions.** When Pi or an extension asks something (choose, confirm, type),
+  the question appears in the conversation; the pill shows *Pi has a question*
+  while the panel is closed. Extension notes appear as notifications and their
+  status lines under the message box.
+- **Model and thinking.** The model menu under the title lists Pi's models and
+  thinking levels; *Pi's default* follows your Pi configuration. The choice is
+  saved in `chat.json`. If a chosen model disappears from Pi, sending is paused
+  with an option to return to Pi's default. Change it between replies.
+- **Images.** Paste, drop, or attach up to four PNG, JPEG, WebP, or GIF images
+  of up to 5 MB each per message. They are sent to your configured provider.
+- **Provider failures.** When the model's provider refuses a reply (an expired
+  sign-in, a rate limit, an outage), the chat and Run history say so in plain
+  words and what to do; the provider's own response is under **Details**.
+
+Only the person using Sift can use the chat; the CLI token, scheduled jobs, and
+the chat's own Pi are refused. While Pi is replying or waiting on a question,
+backups, restores, and updates ask you to wait for the reply and try again;
+otherwise they stop the idle chat Pi first. The daily backup is deferred until
+the chat is idle. The chat conversation is in backups with
+job memory. A conversation file over 64 MB, for example after many pasted
+images, is left out of backups and noted in the log; `/new` starts a smaller one.
+
 ## Updates and installation
 
 An update check reads only the stable release endpoint for `akstspace/sift`
@@ -180,8 +227,10 @@ atomically replaces the executable. Downloads retry a dropped connection or a
 brief GitHub fault twice; a GitHub failure is reported as such (HTTP 502), and
 every server-side failure is also written to the service log with its cause.
 
-When a newer stable release is known, an **Update available** control appears
-to the left of search. Installing (there, in Settings, or with `sift update`)
+Opening or reloading the workspace checks for a release when update checks are
+on, reusing a result under two minutes old so reloads never repeat the request;
+open pages check again every 30 minutes. When a newer stable release is known,
+an **Update available** control appears to the left of search. Installing (there, in Settings, or with `sift update`)
 requires that no agent is running, and then **restarts Sift automatically**:
 it shuts down gracefully (live streams, storage, data lock) and re-executes the
 installed binary in place with the same arguments and process ID, so a

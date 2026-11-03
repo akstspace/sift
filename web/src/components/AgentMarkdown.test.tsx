@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { AgentMarkdown, transcriptBlocks } from "./AgentMarkdown";
+import { AgentMarkdown } from "./AgentMarkdown";
 
 describe("agent markdown", () => {
   it("renders an agent's note as real structure, below the page's headings", () => {
@@ -28,18 +28,5 @@ describe("agent markdown", () => {
     expect(screen.getByRole("img", { name: "local" }).getAttribute("src")).toBe("/api/images/img_" + "a".repeat(32));
     render(<AgentMarkdown text={"![](/api/images/img_" + "b".repeat(32) + ")"} />);
     expect(screen.getByRole("img", { name: "Attached image" })).toBeDefined();
-  });
-  it("joins streamed text so Markdown split between chunks still renders", () => {
-    const blocks = transcriptBlocks([
-      { type: "text", text: "##" }, { type: "text", text: "# Today\n1. **Deli" }, { type: "text", text: "ver**" },
-      { type: "tool", text: "Running read" },
-      { type: "text", text: "Done." },
-    ]);
-    expect(blocks).toEqual([
-      { kind: "text", text: "### Today\n1. **Deliver**", key: 0 },
-      { kind: "log", entry: { type: "tool", text: "Running read" }, key: 3 },
-      { kind: "text", text: "Done.", key: 4 },
-    ]);
-    expect(transcriptBlocks([])).toEqual([]);
   });
 });

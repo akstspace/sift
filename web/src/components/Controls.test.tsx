@@ -123,6 +123,12 @@ describe("shared accessibility and deliberate actions", () => {
     expect(screen.getByRole("status").textContent).toBe("Working…");
     await user.click(screen.getByRole("button", { name: "Close" })); await user.click(screen.getByRole("button", { name: "Continue" })); expect(close).toHaveBeenCalledOnce(); expect(next).toHaveBeenCalledOnce();
   });
+  it("draws the default task icon without the icon sprite", () => {
+    // Each <use> into the 2.5 MB sprite costs a style pass; most tasks use the default.
+    const { container } = render(<TaskIcon id="circle-check" size={15} catalog={[{ id: "circle-check", name: "Circle Check", category: "System", symbol: "ti-circle-check", aliases: [] }]} />);
+    expect(container.querySelector("use")).toBeNull();
+    expect(container.querySelector("svg.tabler-icon-circle-check.tabler-task-icon")?.getAttribute("width")).toBe("15");
+  });
   it("shows app-window guidance and updates the installed state from the browser event", async () => {
     const user = userEvent.setup(); render(<InstallApp />, { wrapper: TestProviders });
     await user.click(screen.getByRole("button", { name: "Install Sift as an app" }));

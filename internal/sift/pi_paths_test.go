@@ -41,7 +41,7 @@ func TestPiDiscoveryRefusesFailedCommandsAndKeepsThinkingOptional(t *testing.T) 
 
 func TestPiExecutionFailureAndEvidencePaths(t *testing.T) {
 	for _, tc := range []struct{ scenario, status, logType string }{
-		{"failed", "failed", "text"}, {"tool-error", "succeeded", "tool-error"},
+		{"failed", "failed", "text"}, {"tool-error", "succeeded", "tool-result"},
 		{"maintenance", "succeeded", "system"}, {"aborted", "cancelled", "text"}, {"exit", "interrupted", ""},
 	} {
 		t.Run(tc.scenario, func(t *testing.T) {
@@ -56,7 +56,7 @@ func TestPiExecutionFailureAndEvidencePaths(t *testing.T) {
 			if tc.logType != "" {
 				found := false
 				for _, entry := range s.Store.Logs(r.ID) {
-					found = found || entry.Type == tc.logType
+					found = found || entry.Type == tc.logType && (tc.scenario != "tool-error" || entry.Error)
 				}
 				if !found {
 					t.Fatal("lost streamed evidence", tc.logType)

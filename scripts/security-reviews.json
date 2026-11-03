@@ -195,10 +195,6 @@
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
     "reason": "Authenticated image endpoint writes locally uploaded bytes with allowlisted PNG/JPEG/GIF/WebP MIME (fallback octet-stream), nosniff and cache headers. inspectImage rejects SVG/HTML and validates raster dimensions; no remote import or HTML response is produced."
   },
-  "internal/sift/http.go:go.lang.security.audit.xss.no-fprintf-to-responsewriter:77b3bfc83afc1cf69b131f7de79d53d56cbce912f77776a8edcb86250542fd77": {
-    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
-    "reason": "Authenticated SSE stream has text/event-stream content type, integer event IDs and encoding/json data. JSON escapes HTML and embedded newlines; the client parses JSON rather than injecting HTML. This formatted write is SSE framing, not an HTML sink."
-  },
   "internal/sift/lifecycle_test.go:go.lang.correctness.permissions.incorrect-default-permission:e00e64deb7ac10e44bfa500dbdb6623a86c7769d738c62d8ea3c421f06e47d90": {
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
     "reason": "An owner-only directory deliberately occupies connection.json in t.TempDir to force startup failure. This is malformed filesystem test input, not an insecure file permission."
@@ -354,5 +350,21 @@
   "internal/sift/system.go:go.lang.security.audit.dangerous-exec-command:5bccfa35efb2c6f60bea2e81dcea67d4018a5acd06b31203a7f1a2399ee4506c": {
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
     "reason": "Update checks run this process's own executable path (os.Executable, resolved by the OS, never from a request, task, comment, setting or agent output) with the fixed argument \"version\", a 10-second timeout, and no shell. It runs only after the file at that path has been replaced since startup (different inode, size or modification time), to recognize an update already installed there, and it is the same binary Sift re-executes on its next restart, so running it adds no trust beyond the installed executable. Output is compared to the release tag only."
+  },
+  "internal/sift/http.go:go.lang.security.audit.xss.no-fprintf-to-responsewriter:90359a4562dd62e4ab5418affd27488896ade9020463cba58f268361eff1814a": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Authenticated SSE stream (text/event-stream) writer helper. Every call passes a source-literal format: reset, integer-ID change events with encoding/json data, chat events whose data is encode()d JSON from Chat.broadcast, and heartbeats. JSON escapes newlines and HTML, so task data and Pi output cannot add SSE fields or frames; the client parses JSON and never renders it as HTML. Chat events go only to the person's own stream."
+  },
+  "internal/sift/backup_safety_test.go:go.lang.correctness.permissions.incorrect-default-permission:1d7814ee4f9c038e308865e1b8a03142c69d8b0300bb72e79a4d27a9c2a4f240": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Creates sessions/chat inside testService's disposable t.TempDir to show an oversized chat conversation is left out of backups while other sessions stay. Mode 0700 is owner-only, and directory search permission is needed to create its entries; 0600 is not a usable directory mode."
+  },
+  "internal/sift/chat_test.go:go.lang.correctness.permissions.incorrect-default-permission:77498af39b801d9bf1c347fa816a01abc4a7339aca8da6ed2a7608a12353f000": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Creates sessions/chat in a disposable t.TempDir holding a deliberately corrupt chat session, to show Sift starts a new session when Pi cannot open the saved one. Mode 0700 is owner-only, and directory search permission is needed for the files it holds; 0600 is not a usable directory mode."
+  },
+  "internal/sift/testdata/pi-chat-fixture.py:python.lang.security.audit.dangerous-subprocess-use-audit:61c467e9e4c943110339879e38148a31558bb889a081b47b0cc500656afb3d87": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Test-only scripted Pi standing in for Pi's bash tool. It runs, without a shell (shlex.split argv), only the Sift CLI calls the fixture composes itself: the executable and data folder from Sift's own system prompt, literal subcommands, and Sift-issued task IDs with integer revisions. No person-supplied text is executed, it is never shipped in the binary, and it runs only under the Go tests and local e2e."
   }
 }

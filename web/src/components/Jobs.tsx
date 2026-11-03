@@ -1,6 +1,8 @@
 import { Action } from "./shared";
-import { AgentMarkdown, transcriptBlocks, type TranscriptEntry } from "./AgentMarkdown";
-import { useEffect, useRef, useState } from "react";
+import { AgentMarkdown } from "./AgentMarkdown";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { PiErrorDetail, Transcript } from "../transcript/Transcript";
+import { describePiError, itemsFromRunEntries, type RunEntry } from "../transcript/model";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Choice } from "./Choice";
@@ -21,7 +23,7 @@ import {
 } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { api, friendlyTime } from "../api";
-import type { Job, PiInfo, Run, Snapshot } from "../types";
+import type { CatalogIcon, Job, PiInfo, Run, Snapshot, Task } from "../types";
 import { Button, Busy, Confirm, Empty, Field } from "./shared";
 import { JobSchedules, describeSchedules } from "./JobSchedules";
 import { useDraftGuard, useDraftProtection } from "./DraftGuard";
@@ -504,17 +506,24 @@ export function Runs({
   selected,
   onSelect,
   refresh,
+  catalog = [],
+  onOpenTask,
 }: {
   snapshot: Snapshot;
   selected: string;
   onSelect: (id: string) => void;
   refresh: () => Promise<void>;
+  catalog?: CatalogIcon[];
+  onOpenTask?: (task: Task) => void;
 }) {
   const [detail, setDetail] = useState<{
       run: Run;
-      entries: TranscriptEntry[];
+      entries: RunEntry[];
     } | null>(null),
     [error, setError] = useState("");
+  const lookups = useMemo(() => ({ tasks: snapshot.tasks, columns: snapshot.columns, projects: snapshot.projects, tags: snapshot.tags }), [snapshot.tasks, snapshot.columns, snapshot.projects, snapshot.tags]);
+  const running = detail?.run.status === "running";
+  const items = useMemo(() => (detail ? itemsFromRunEntries(detail.entries, running) : []), [detail, running]);
   useEffect(() => {
     if (!selected) {
       setDetail(null);
@@ -635,22 +644,17 @@ export function Runs({
                   )}
                 </header>
                 <div key={detail.run.id} className="run-content" role="region" aria-label="Agent transcript" tabIndex={0} aria-live="off">
-                {detail.run.error && (
-                  <div className="error" role="alert">
-                    {detail.run.error}
-                  </div>
-                )}
+                {detail.run.error && (() => {
+                  const failure = describePiError(detail.run.error);
+                  return (
+                    <div className="error" role="alert">
+                      {failure.text}
+                      {failure.detail && <PiErrorDetail detail={failure.detail} />}
+                    </div>
+                  );
+                })()}
                 <div className="run-transcript">
-                  {transcriptBlocks(detail.entries).map((block) =>
-                    block.kind === "text" ? (
-                      <AgentMarkdown key={block.key} text={block.text} />
-                    ) : (
-                      <div className={"run-log " + block.entry.type} key={block.key}>
-                        <Terminal size={13} />
-                        <span>{block.entry.text}</span>
-                      </div>
-                    ),
-                  )}
+                  <Transcript key={detail.run.id} items={items} lookups={lookups} catalog={catalog} onOpenTask={onOpenTask} onOpenRun={onSelect} live={running} />
                   {!detail.entries.length && (
                     <p className="muted">
                       {detail.run.status === "running"

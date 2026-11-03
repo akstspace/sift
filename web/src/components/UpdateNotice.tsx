@@ -40,7 +40,9 @@ export function UpdateNotice({ version, runningAgents }: { version: string; runn
   const restarting = useRef(() => {});
   useEffect(() => {
     let live = true;
-    const load = () => api<UpdateStatus>("/update").then(value => { if (live) setStatus(value); }).catch(() => {});
+    // Refreshing asks GitHub (when update checks are on) unless the last check
+    // is under two minutes old, so a new release shows up on load.
+    const load = () => api<UpdateStatus>("/update/refresh", "POST", {}).then(value => { if (live) setStatus(value); }).catch(() => {});
     const changed = (event: Event) => (event as CustomEvent<{ restarting?: boolean } | undefined>).detail?.restarting ? restarting.current() : load();
     load();
     const timer = setInterval(load, RECHECK_MS);

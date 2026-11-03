@@ -114,11 +114,21 @@ type Run struct {
 	SessionID string `json:"sessionId"`
 	Job       Job    `json:"job"`
 }
+
+// RunEntry is one line of a run transcript: "text" and "thinking" from the
+// model, "tool" when a tool starts (with its arguments) and "tool-result" when
+// it ends (with its output), and "system" notices. Text stays a short summary
+// so `sift runs watch` prints readable progress.
 type RunEntry struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-	At   string `json:"at"`
-	Tool string `json:"tool,omitempty"`
+	Type       string          `json:"type"`
+	Text       string          `json:"text"`
+	At         string          `json:"at"`
+	Tool       string          `json:"tool,omitempty"`
+	Call       string          `json:"call,omitempty"`
+	Args       json.RawMessage `json:"args,omitempty"`
+	Output     string          `json:"output,omitempty"`
+	Error      bool            `json:"error,omitempty"`
+	DurationMs int64           `json:"durationMs,omitempty"`
 }
 type Attachment struct {
 	ID     string `json:"id"`

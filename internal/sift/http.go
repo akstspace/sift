@@ -555,6 +555,9 @@ func (s *Service) routes() http.Handler {
 		defer s.updateMu.Unlock()
 		writeJSON(w, 200, s.update)
 	})
+	mux.HandleFunc("POST /api/update/refresh", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, s.RefreshUpdate(r.Context()))
+	})
 	mux.HandleFunc("POST /api/update/check", func(w http.ResponseWriter, r *http.Request) {
 		writeOperation(w, r, func(ctx context.Context) (any, error) { return s.CheckUpdate(ctx), nil })
 	})
@@ -579,6 +582,64 @@ func (s *Service) routes() http.Handler {
 		writeJSON(w, 202, map[string]bool{"restarting": true})
 		s.restart()
 	})
+	// The chat panel is the person's: agents (including the chat's own Pi,
+	// which uses the agent token) can't read or drive it.
+	person := func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if actorOf(r) != "user" {
+				apiError(w, &APIError{Status: 403, Message: "Only the person using Sift can use the chat"})
+				return
+			}
+			h(w, r)
+		}
+	}
+	mux.HandleFunc("GET /api/chat", person(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, s.chat.State(r.Context(), r.URL.Query().Get("peek") == ""))
+	}))
+	mux.HandleFunc("POST /api/chat/prompt", person(func(w http.ResponseWriter, r *http.Request) {
+		var in ChatPrompt
+		// Four 5 MB images, base64-encoded, plus the message.
+		r.Body = http.MaxBytesReader(w, r.Body, 30<<20)
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			apiError(w, invalid("Invalid JSON request: %v", err))
+			return
+		}
+		out, err := s.chat.Prompt(r.Context(), in)
+		if err != nil {
+			apiError(w, err)
+			return
+		}
+		writeJSON(w, 200, out)
+	}))
+	mux.HandleFunc("POST /api/chat/abort", person(func(w http.ResponseWriter, r *http.Request) {
+		s.chat.Abort()
+		writeJSON(w, 200, map[string]bool{"aborted": true})
+	}))
+	mux.HandleFunc("POST /api/chat/new", person(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]any{"reset": true, "sessionId": s.chat.NewSession()})
+	}))
+	mux.HandleFunc("POST /api/chat/dialogs/{id}", person(func(w http.ResponseWriter, r *http.Request) {
+		var in ChatAnswer
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		if err := s.chat.Answer(r.PathValue("id"), in); err != nil {
+			apiError(w, err)
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"answered": true})
+	}))
+	mux.HandleFunc("PUT /api/chat/settings", person(func(w http.ResponseWriter, r *http.Request) {
+		var in chatConfig
+		if !decodeBody(w, r, &in) {
+			return
+		}
+		if err := s.chat.Configure(r.Context(), in); err != nil {
+			apiError(w, err)
+			return
+		}
+		writeJSON(w, 200, s.chat.State(r.Context(), true))
+	}))
 	mux.HandleFunc("POST /api/backups", func(w http.ResponseWriter, r *http.Request) {
 		writeOperation(w, r, func(ctx context.Context) (any, error) {
 			path, err := s.backupContext(ctx)
@@ -644,7 +705,8 @@ func (s *Service) routes() http.Handler {
 		http.ServeContent(w, r, path, time.Time{}, bytes.NewReader(data))
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		maintenance := r.URL.Path == "/api/update/apply" || r.URL.Path == "/api/pi/update" || r.URL.Path == "/api/backups" || r.URL.Path == "/api/restore"
+		// These never write the workspace (or take the maintenance lock themselves).
+		maintenance := r.URL.Path == "/api/update/refresh" || r.URL.Path == "/api/update/apply" || r.URL.Path == "/api/pi/update" || r.URL.Path == "/api/backups" || r.URL.Path == "/api/restore"
 		if r.Method != "GET" && r.Method != "HEAD" && !maintenance {
 			if !s.dataMu.TryRLock() {
 				apiError(w, conflict("Workspace changes are paused for maintenance"))
@@ -701,39 +763,68 @@ func (s *Service) streamEvents(w http.ResponseWriter, r *http.Request) {
 	defer heartbeat.Stop()
 	var generation string
 	_ = s.Store.DB.QueryRow("SELECT value FROM metadata WHERE key='restore_generation'").Scan(&generation)
-	for {
+	write := func(format string, args ...any) bool {
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, err := fmt.Fprintf(w, format, args...)
+		return err == nil
+	}
+	sync := func() bool {
 		var latestGeneration string
 		_ = s.Store.DB.QueryRow("SELECT value FROM metadata WHERE key='restore_generation'").Scan(&latestGeneration)
 		if latestGeneration != generation || cursor > s.Store.Latest() {
 			cursor = 0
 			generation = latestGeneration
-			if _, err := fmt.Fprint(w, "event: reset\ndata: {}\n\n"); err != nil {
-				return
+			if !write("event: reset\ndata: {}\n\n") {
+				return false
 			}
 			flusher.Flush()
 		}
-		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(5 * time.Second))
 		events := s.Store.Events(cursor, "", 500)
 		for _, e := range events {
-			_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(5 * time.Second))
-			if _, err := fmt.Fprintf(w, "id: %d\nevent: change\ndata: %s\n\n", e.ID, encode(e)); err != nil {
-				return
+			if !write("id: %d\nevent: change\ndata: %s\n\n", e.ID, encode(e)) {
+				return false
 			}
 			cursor = e.ID
 		}
 		if len(events) > 0 {
 			flusher.Flush()
 		}
+		return true
+	}
+	// The person's pages also receive the chat as it happens, on this same
+	// connection so each tab holds one stream.
+	var chat chan []byte
+	if actorOf(r) == "user" {
+		chat = s.chat.subscribe()
+		defer func() { s.chat.unsubscribe(chat) }()
+	}
+	if !sync() {
+		return
+	}
+	for {
 		select {
 		case <-r.Context().Done():
 			return
 		case <-s.stopping:
 			return
+		case b, ok := <-chat:
+			if !ok {
+				// This page fell behind; it reloads the conversation.
+				chat, b = s.chat.subscribe(), []byte(`{"type":"sift_chat_resync"}`)
+			}
+			if !write("event: chat\ndata: %s\n\n", b) {
+				return
+			}
+			flusher.Flush()
 		case <-ticker.C:
-			fmt.Fprintf(w, "event: tick\ndata: {}\n\n")
+			if !sync() || !write("event: tick\ndata: {}\n\n") {
+				return
+			}
 			flusher.Flush()
 		case <-heartbeat.C:
-			fmt.Fprint(w, ": heartbeat\n\n")
+			if !write(": heartbeat\n\n") {
+				return
+			}
 			flusher.Flush()
 		}
 	}

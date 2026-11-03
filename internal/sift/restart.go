@@ -30,7 +30,7 @@ func (s *Service) reserveRestart(holdingMaintenance bool) error {
 	}
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
-	if (s.maintenance && !holdingMaintenance) || len(s.active) != 0 {
+	if (s.maintenance && !holdingMaintenance) || len(s.active) != 0 || s.chat.busy() {
 		return conflict("Wait for running agents or maintenance to finish, then restart")
 	}
 	s.restarting = true

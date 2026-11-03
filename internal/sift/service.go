@@ -41,6 +41,8 @@ type Service struct {
 	startedFrom os.FileInfo
 	wg          sync.WaitGroup
 	runs        sync.WaitGroup
+	// chat is the person's conversation with Pi in the chat panel.
+	chat *Chat
 }
 
 func NewService(dir string) (*Service, error) {
@@ -53,6 +55,15 @@ func NewService(dir string) (*Service, error) {
 	s := &Service{Dir: dir, Store: store, Storage: &Storage{}, active: map[string]context.CancelFunc{}, activeRun: map[string]string{}, ctx: ctx, cancel: cancel}
 	if exe, e := executablePath(); e == nil {
 		s.startedFrom, _ = os.Stat(exe)
+	}
+	s.chat = newChat(dir)
+	s.chat.paused = func() error {
+		s.runMu.Lock()
+		defer s.runMu.Unlock()
+		if s.maintenance || s.restarting {
+			return &APIError{Status: 503, Message: "Sift is busy with a backup, restore, or update. Try again in a moment."}
+		}
+		return nil
 	}
 	if err = s.recoverRestore(); err != nil {
 		cancel()
@@ -107,6 +118,7 @@ func (s *Service) Close() {
 		c()
 	}
 	s.runMu.Unlock()
+	s.chat.stop("shutdown")
 	s.wg.Wait()
 	s.runs.Wait()
 	s.Storage.Close()
@@ -356,8 +368,10 @@ func (s *Service) maintenanceLoop() {
 func (s *Service) checkMaintenance() {
 	var cfg Settings
 	s.Store.Get("settings", "app", &cfg)
+	s.chat.reap(chatIdleTimeout)
 	last, _ := time.Parse(time.RFC3339Nano, cfg.LastBackup)
-	if time.Since(last) >= 24*time.Hour {
+	// A chat reply in progress postpones the daily backup to a later check.
+	if time.Since(last) >= 24*time.Hour && !s.chat.busy() {
 		func() {
 			_, err := s.Backup()
 			if err != nil && s.dataMu.TryRLock() {

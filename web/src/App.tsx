@@ -69,6 +69,8 @@ import { DraftGuardProvider, useDraftGuard } from "./components/DraftGuard";
 import { pageDirection, pageMotion, projectTitleId, settle, titleMorph, type PageDirection } from "./motion";
 import { ConnectionMonitor, type ConnectionState } from "./connection";
 import { useInertBackground } from "./hooks/useInertBackground";
+import { ChatDock, preloadChat } from "./chat/Chat";
+import { CHAT_EVENT } from "./chat/useChat";
 
 export default function App() {
   useInertBackground();
@@ -103,6 +105,7 @@ function Workspace() {
     [onboarding, setOnboarding] = useState(false),
     [createJob, setCreateJob] = useState(false),
     [selectedRun, setSelectedRun] = useState(""),
+    [lastTask, setLastTask] = useState(""),
     [clock, setClock] = useState(Date.now());
   const search = useRef<HTMLInputElement>(null),
     refreshRunning = useRef(false),
@@ -140,7 +143,7 @@ function Workspace() {
     if (!onboarded) return;
     // Warm the other destinations while the workspace is idle, so a first visit
     // swaps pages in one motion instead of flashing a loading state.
-    const timer = setTimeout(() => { for (const view of [Organization, Jobs, Runs, Settings]) view.preload().catch(() => {}); }, 400);
+    const timer = setTimeout(() => { for (const view of [Organization, Jobs, Runs, Settings]) view.preload().catch(() => {}); preloadChat().catch(() => {}); }, 400);
     return () => clearTimeout(timer);
   }, [onboarded]);
   useEffect(() => {
@@ -173,7 +176,13 @@ function Workspace() {
     source.onopen = () => {
       monitor.open();
       refresh();
+      // Chat events sent while disconnected were missed; the chat reloads.
+      window.dispatchEvent(new CustomEvent(CHAT_EVENT, { detail: { type: "sift_chat_resync" } }));
     };
+    source.addEventListener("chat", (e) => {
+      try { window.dispatchEvent(new CustomEvent(CHAT_EVENT, { detail: JSON.parse((e as MessageEvent).data) })); }
+      catch { /* A malformed event is skipped; the next resync repairs the view. */ }
+    });
     source.onerror = () => monitor.error();
     source.addEventListener("reset", () => { cursor.current = 0; refresh(); });
     source.addEventListener("change", () => {
@@ -246,6 +255,7 @@ function Workspace() {
   const navigate = (value: string, projectId = "") => guard(() => {
     setPage(value);
     setProject(projectId);
+    setLastTask("");
     if (projectId) setProjectView("board");
     setQuery("");
     setSelected(null);
@@ -306,6 +316,9 @@ function Workspace() {
     catch (e) { toast.error((e as Error).message); }
   };
   const openTask = (task: Task) => guard(() => setSelected(task));
+  // The chat knows the task the person last opened on this page, so "this
+  // task" works after its details close.
+  useEffect(() => { if (selected?.id) setLastTask(selected.id); }, [selected?.id]);
   const addTask = (taskStatus = "open", parent = "") => guard(() => {
     const t = newTask(parent);
     t.status = taskStatus;
@@ -441,6 +454,15 @@ function Workspace() {
       </MotionConfig>
     );
   const boardPage = ["today", "backlog", "trash", "archive"].includes(page);
+  const pageLabels: Record<string, string> = { today: "Today", backlog: "All tasks", trash: "Trash", archive: "Archive", organization: "Projects", jobs: "Agents", runs: "Run history", settings: "Settings" };
+  const viewedTask = snapshot.tasks.find(t => t.id === (selected?.id || lastTask));
+  const viewedRun = page === "runs" ? snapshot.runs.find(r => r.id === selectedRun) : undefined;
+  const chatContext = [
+    "Page: " + (project ? `Project ${snapshot.projects.find(p => p.id === project)?.name || project}` : pageLabels[page] || page) + ".",
+    query ? `Searching for: ${query}.` : "",
+    viewedTask ? `Open task: ${viewedTask.title} (${viewedTask.id}).` : "",
+    viewedRun ? `Open run: ${viewedRun.jobName} (${viewedRun.id}).` : "",
+  ].filter(Boolean).join(" ");
   const taskView = project ? projectView : snapshot.settings.view;
   const title = project
     ? snapshot.projects.find((p) => p.id === project)?.name || "Project"
@@ -788,6 +810,8 @@ function Workspace() {
                       selected={selectedRun}
                       onSelect={setSelectedRun}
                       refresh={refresh}
+                      catalog={catalog}
+                      onOpenTask={openTask}
                     />
                   ) : page === "organization" ? (
                     <Organization
@@ -827,6 +851,14 @@ function Workspace() {
                 <span>Task changes appear here live</span>
               </div>
             )}
+            <ChatDock
+              snapshot={snapshot}
+              catalog={catalog}
+              view={{ context: chatContext }}
+              onOpenTask={openTask}
+              onOpenRun={(id) => { navigate("runs"); setSelectedRun(id); }}
+              raised={activeRuns.length > 0}
+            />
           </div>
           <AnimatePresence mode="wait">
             {selected && (

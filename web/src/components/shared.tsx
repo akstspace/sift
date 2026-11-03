@@ -221,7 +221,9 @@ export function TaskIcon({
   catalog: CatalogIcon[];
   size?: number;
 }) {
-  const icon = catalog.find((i) => i.id === id);
+  // The default icon ships with the app. Every <use> into the 2.5 MB sprite
+  // costs Chrome a pass over it, so most tasks shouldn't pay that.
+  const icon = id === "circle-check" ? undefined : catalog.find((i) => i.id === id);
   if (icon?.symbol && /^ti-[a-z0-9-]+$/.test(icon.symbol))
     return (
       <svg
@@ -235,7 +237,7 @@ export function TaskIcon({
         <use href={`/tabler-icons.svg#${icon.symbol}`} />
       </svg>
     );
-  return <CircleCheck size={size} aria-hidden="true" />;
+  return <CircleCheck size={size} aria-hidden="true" className="tabler-task-icon" />;
 }
 export function CloseButton({ onClick }: { onClick: () => void }) {
   return (

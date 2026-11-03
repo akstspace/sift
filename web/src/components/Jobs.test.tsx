@@ -217,6 +217,14 @@ describe("real run history presentation", () => {
     await waitFor(() => expect(props.onSelect).toHaveBeenCalledWith("run_new"));
     await user.click(screen.getByRole("button", { name: "Back to runs" })); expect(props.onSelect).toHaveBeenCalledWith("");
   });
+  it("explains a provider's failure and keeps its words behind Details", async () => {
+    mock.mockResolvedValueOnce({ run: run({ status: "failed", error: '401 {"error":{"message":"Invalid bearer token"}}' }), entries: [] });
+    runs("run_test");
+    const alert = await screen.findByRole("alert");
+    expect(alert.firstChild?.textContent).toBe("The model’s provider didn’t accept Pi’s sign-in (Invalid bearer token). Sign in again in Pi, or choose another model.");
+    fireEvent.click(within(alert).getByRole("button", { name: "Details" }));
+    expect(alert.querySelector(".notice-detail code")?.textContent).toBe('401 {"error":{"message":"Invalid bearer token"}}');
+  });
   it("shows an agent's reply as formatted Markdown, even when streamed in pieces", async () => {
     mock.mockResolvedValueOnce({ run: run({ summary: "### Summary\n- **One** thing" }), entries: [{ type: "text", text: "Created **23 tasks**.\n\n##" }, { type: "text", text: "# Today\n1. **Deliver** exports\n2. Triage `crash`" }, { type: "tool", text: "Running read" }, { type: "text", text: "Done." }] });
     runs("run_test");
@@ -225,7 +233,8 @@ describe("real run history presentation", () => {
     expect(within(transcript).getByText("23 tasks").tagName).toBe("STRONG");
     expect([...transcript.querySelectorAll(".run-transcript ol > li")].map(li => li.textContent)).toEqual(["Deliver exports", "Triage crash"]);
     expect(transcript.querySelector(".run-transcript li code")?.textContent).toBe("crash");
-    expect(transcript.querySelector(".run-log")?.textContent).toBe("Running read");
+    // An older run stored only "Running read": it is still a tool row.
+    expect(within(transcript).getByRole("button", { name: /^Read/ }).closest(".tool-row")).not.toBeNull();
     expect(transcript.querySelector(".run-transcript")?.textContent).not.toMatch(/[#*`]/);
     expect(within(transcript.querySelector(".run-summary") as HTMLElement).getByRole("heading", { name: "Summary", level: 5 })).toBeDefined();
   });

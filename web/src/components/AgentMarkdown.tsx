@@ -32,22 +32,3 @@ export function AgentMarkdown({ text, className = "" }: { text: string; classNam
     <Markdown remarkPlugins={[remarkGfm]} components={components}>{text}</Markdown>
   </div>;
 }
-
-export type TranscriptEntry = { type: string; text: string; at?: string; tool?: string };
-export type TranscriptBlock = { kind: "text"; text: string; key: number } | { kind: "log"; entry: TranscriptEntry; key: number };
-
-/**
- * Pi streams a reply as many small text entries. Consecutive ones are one
- * message, so they are joined before rendering; Markdown split mid-heading or
- * mid-list would otherwise render wrongly. Tool activity stays separate.
- */
-export function transcriptBlocks(entries: TranscriptEntry[]): TranscriptBlock[] {
-  const blocks: TranscriptBlock[] = [];
-  entries.forEach((entry, i) => {
-    const last = blocks.at(-1);
-    if (entry.type !== "text") blocks.push({ kind: "log", entry, key: i });
-    else if (last?.kind === "text") last.text += entry.text;
-    else blocks.push({ kind: "text", text: entry.text, key: i });
-  });
-  return blocks;
-}
