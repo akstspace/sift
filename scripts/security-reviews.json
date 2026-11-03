@@ -1,4 +1,8 @@
 {
+  "internal/sift/schedules_test.go:go.lang.correctness.permissions.incorrect-default-permission:9d446bdb4eb959ab18dcf29acc854c43a1722892ab79b2ad9170c4ce03803832": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Creates a job's sessions directory inside testService's disposable t.TempDir so deleting the job can be shown to remove it. Mode 0700 is owner-only, and directory search permission is needed to create and remove its entries; 0600 is not a usable directory mode. No personal workspace or group/other access is involved."
+  },
   "internal/sift/progress_test.go:go.lang.security.audit.xss.no-io-writestring-to-responsewriter:abe6e1f57aeaa8744393840123bba867accc6b26f000f0b5032fafd085fa2727": {
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
     "reason": "Test-only httptest server returns one of three source-authored JSON fixtures (malformed, empty, queued run) to exercise CLI parsing failures. No request data, user content or browser rendering reaches the writer; the client is the Sift CLI under test, not an HTML page."

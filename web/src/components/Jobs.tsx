@@ -17,11 +17,13 @@ import {
   IconSettings as Settings2,
   IconPlayerStop as Square,
   IconTerminal2 as Terminal,
+  IconTrash as Trash2,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { api, friendlyTime } from "../api";
 import type { Job, PiInfo, Run, Snapshot } from "../types";
 import { Button, Busy, Confirm, Empty, Field } from "./shared";
+import { JobSchedules, describeSchedules } from "./JobSchedules";
 import { useDraftGuard, useDraftProtection } from "./DraftGuard";
 import {
   Dialog,
@@ -55,8 +57,7 @@ export function Jobs({
     provider: "",
     model: "",
     thinking: "",
-    scheduleType: "daily",
-    schedule: "09:00",
+    schedules: [{ type: "daily", schedule: "09:00" }],
     timezone: snapshot.settings.timezone,
     enabled: false,
     timeoutMinutes: snapshot.settings.timeoutMinutes,
@@ -152,7 +153,7 @@ export function Jobs({
                   <div className="job-meta">
                     <span>
                       <Clock3 size={13} />
-                      {j.scheduleType} · {j.schedule} · {j.timezone}
+                      {describeSchedules(j.schedules)} · {j.timezone}
                     </span>
                     <span>{j.model || "Pi default model"}</span>
                   </div>
@@ -232,15 +233,11 @@ function JobEditor({
     [pi, setPi] = useState<PiInfo | null>(null),
     [loading, setLoading] = useState(false),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState(""),
-    [weekdays, setWeekdays] = useState<number[]>(
-      initial.weekdays || [1, 2, 3, 4, 5],
-    );
+    [error, setError] = useState("");
   const set = <K extends keyof Job>(k: K, v: Job[K]) =>
     setJob((j) => ({ ...j, [k]: v }));
   const { guard } = useDraftGuard();
-  const initialWeekdays = initial.weekdays || [1, 2, 3, 4, 5];
-  const dirty = JSON.stringify(job) !== JSON.stringify(initial) || JSON.stringify(weekdays) !== JSON.stringify(initialWeekdays);
+  const dirty = JSON.stringify(job) !== JSON.stringify(initial);
   useDraftProtection(dirty, busy);
   const close = () => guard(onClose);
   const probeRequest = useRef(0);
@@ -277,7 +274,7 @@ function JobEditor({
     setBusy(true);
     setError("");
     try {
-      await api("/jobs", "POST", { ...job, weekdays });
+      await api("/jobs", "POST", job);
       await refresh();
       onClose();
       toast.success("Job saved");
@@ -381,70 +378,7 @@ function JobEditor({
                 </>
               )}
             </Button>
-            <div className="form-grid">
-              <Field label="Schedule">
-                <Choice
-                  value={job.scheduleType}
-                  onValueChange={(value) => {
-                    set("scheduleType", value);
-                    set(
-                      "schedule",
-                      value === "interval"
-                        ? "1h"
-                        : value === "cron"
-                          ? "0 9 * * 1-5"
-                          : "09:00",
-                    );
-                  }}
-                  options={[{ value: "daily", label: "Every day" }, { value: "weekdays", label: "Selected weekdays" }, { value: "interval", label: "Repeating interval" }, { value: "cron", label: "Advanced cron" }]}
-                />
-              </Field>
-              <Field
-                label={
-                  job.scheduleType === "interval"
-                    ? "Interval"
-                    : job.scheduleType === "cron"
-                      ? "Cron expression"
-                      : "Local time"
-                }
-                hint={
-                  job.scheduleType === "interval"
-                    ? "For example 30m or 2h"
-                    : job.scheduleType === "cron"
-                      ? "Minute hour day month weekday"
-                      : "24-hour time, HH:mm (for example 09:00)"
-                }
-              >
-                <Input
-                  required
-                  type="text"
-                  placeholder={["daily", "weekdays"].includes(job.scheduleType) ? "09:00" : undefined}
-                  pattern={["daily", "weekdays"].includes(job.scheduleType) ? "([01][0-9]|2[0-3]):[0-5][0-9]" : undefined}
-                  value={job.schedule}
-                  onChange={(e) => set("schedule", e.target.value)}
-                />
-              </Field>
-            </div>
-            {job.scheduleType === "weekdays" && (
-              <div className="weekday-picker">
-                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
-                  (d, i) => (
-                    <Action
-                      type="button"
-                      key={d}
-                      aria-pressed={weekdays.includes(i)}
-                      onClick={() =>
-                        setWeekdays((v) =>
-                          v.includes(i) ? v.filter((n) => n !== i) : [...v, i],
-                        )
-                      }
-                    >
-                      {d}
-                    </Action>
-                  ),
-                )}
-              </div>
-            )}
+            <JobSchedules value={job.schedules} onChange={(v) => set("schedules", v)} />
             <div className="form-grid">
               <Field label="Timezone">
                 <TimezoneChoice value={job.timezone} onValueChange={v => set("timezone", v)} />
@@ -480,9 +414,9 @@ function JobEditor({
                 onCheckedChange={(v) => set("enabled", v === true)}
               />
               <span>
-                Enable this schedule
+                Run on schedule
                 <small>
-                  Manual Run now works while the schedule is paused.
+                  Manual Run now works while scheduling is paused.
                 </small>
               </span>
             </label>
@@ -527,6 +461,26 @@ function JobEditor({
           </fieldset>
           </div>
           <DialogFooter>
+            {initial.id && (
+              <Confirm
+                title="Delete job"
+                description={`“${initial.name}” stops running and its remembered context is deleted. Past runs stay in Run history.`}
+                destructive
+                action={async () => {
+                  await api("/jobs/" + initial.id + "?revision=" + initial.revision, "DELETE");
+                  await refresh();
+                  onClose();
+                  toast.success("Job deleted");
+                }}
+              >
+                {(open) => (
+                  <Button type="button" variant="ghost" className="job-delete" disabled={busy} onClick={open}>
+                    <Trash2 size={14} />
+                    Delete job
+                  </Button>
+                )}
+              </Confirm>
+            )}
             <Button
               type="button"
               variant="outline"
@@ -658,7 +612,7 @@ export function Runs({
                       <Square size={13} />
                       Cancel
                     </Button>
-                  ) : (
+                  ) : snapshot.jobs.some((j) => j.id === detail.run.jobId) && (
                     <Button
                       variant="outline"
                       onClick={async () => {

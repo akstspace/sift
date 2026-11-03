@@ -130,7 +130,9 @@ edit shell profiles or unrelated agent configurations. The download installer
 already sets up the CLI, PATH, and login startup unless opted out.
 
 Each scheduled Pi job has its own exact persistent session, discovered models
-and thinking levels, IANA timezone, and daily/weekday/interval/cron schedule.
+and thinking levels, IANA timezone, and one or more daily/weekday/interval/cron
+schedules; it runs at whichever comes next. Deleting a job (from its editor)
+removes its memory but keeps its runs in Run history.
 Defaults are three concurrent jobs, no same-job overlap, one pending trigger,
 a 30-minute timeout, and at most one missed-run catch-up. No automatic whole-job
 retry, model fallback, approval, or Pi update. A job can incur model charges

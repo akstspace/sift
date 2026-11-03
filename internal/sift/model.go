@@ -74,25 +74,32 @@ type Entity struct {
 	Icon     string `json:"icon"`
 }
 type Job struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	Prompt         string `json:"prompt"`
-	Directory      string `json:"directory"`
-	Provider       string `json:"provider"`
-	Model          string `json:"model"`
-	Thinking       string `json:"thinking"`
-	ScheduleType   string `json:"scheduleType"`
-	Schedule       string `json:"schedule"`
-	Weekdays       []int  `json:"weekdays"`
-	Timezone       string `json:"timezone"`
-	Enabled        bool   `json:"enabled"`
-	TimeoutMinutes int    `json:"timeoutMinutes"`
-	SessionID      string `json:"sessionId"`
-	NextRun        string `json:"nextRun"`
-	LastRun        string `json:"lastRun"`
-	Pending        bool   `json:"pending"`
-	IncludeImages  bool   `json:"includeImages"`
-	Revision       int    `json:"revision"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Prompt    string `json:"prompt"`
+	Directory string `json:"directory"`
+	Provider  string `json:"provider"`
+	Model     string `json:"model"`
+	Thinking  string `json:"thinking"`
+	// Schedules lists every trigger; the job runs at whichever comes first.
+	Schedules      []JobSchedule `json:"schedules"`
+	Timezone       string        `json:"timezone"`
+	Enabled        bool          `json:"enabled"`
+	TimeoutMinutes int           `json:"timeoutMinutes"`
+	SessionID      string        `json:"sessionId"`
+	NextRun        string        `json:"nextRun"`
+	LastRun        string        `json:"lastRun"`
+	Pending        bool          `json:"pending"`
+	IncludeImages  bool          `json:"includeImages"`
+	Revision       int           `json:"revision"`
+}
+
+// JobSchedule is one recurring trigger: daily or selected weekdays at a local
+// HH:MM, a repeating interval such as 30m, or a five-field cron expression.
+type JobSchedule struct {
+	Type     string `json:"type"`
+	Schedule string `json:"schedule"`
+	Weekdays []int  `json:"weekdays,omitempty"`
 }
 type Run struct {
 	ID        string `json:"id"`

@@ -204,7 +204,7 @@ func TestCLIAgainstLocalRoutes(t *testing.T) {
 	for _, args := range [][]string{{"unknown"}, {"tasks", "unknown"}, {"images", "list"}, {"images", "upload", file + "missing"}, {"jobs", "add", "--file", file}, {"jobs", "update", "missing", "--file", file + "missing"}, {"jobs", "reset", "missing"}, {"jobs", "run", "missing"}, {"runs", "get", "missing"}, {"runs", "cancel", "missing"}, {"undo", "99999"}, {"tasks", "merge", id, "--into", "missing"}} {
 		call(true, args...)
 	}
-	os.WriteFile(file, encode(Job{Name: "CLI paused", Prompt: "Do not run", Directory: s.Dir, ScheduleType: "daily", Schedule: "09:00", Timezone: "UTC"}), 0600)
+	os.WriteFile(file, encode(Job{Name: "CLI paused", Prompt: "Do not run", Directory: s.Dir, Schedules: []JobSchedule{{Type: "daily", Schedule: "09:00"}}, Timezone: "UTC"}), 0600)
 	var job Job
 	json.Unmarshal(call(false, "jobs", "add", "--file", file), &job)
 	os.WriteFile(file, encode(job), 0600)

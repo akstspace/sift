@@ -9,8 +9,8 @@ export const taskFixture = (overrides: Partial<Task> = {}): Task => ({
 });
 export const jobFixture = (overrides: Partial<Job> = {}): Job => ({
   id: "job_test", name: "Morning planning", prompt: "Review the authorized project",
-  directory: "/fixture", provider: "", model: "", thinking: "", scheduleType: "daily",
-  schedule: "09:00", timezone: "UTC", enabled: false, timeoutMinutes: 30,
+  directory: "/fixture", provider: "", model: "", thinking: "",
+  schedules: [{ type: "daily", schedule: "09:00" }], timezone: "UTC", enabled: false, timeoutMinutes: 30,
   sessionId: "session_test", nextRun: "", lastRun: "", pending: false,
   includeImages: false, revision: 1, ...overrides,
 });

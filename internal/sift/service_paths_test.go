@@ -243,7 +243,7 @@ func TestJobMaintenanceAndStorageFailuresNeverLaunchPi(t *testing.T) {
 		t.Fatal("finished run cancellation accepted")
 	}
 	bad := j
-	bad.Schedule = "bad"
+	bad.Schedules = []JobSchedule{{Type: "daily", Schedule: "bad"}}
 	if _, err := s.startRunLocked(bad); err == nil {
 		t.Fatal("invalid persisted schedule ran")
 	}

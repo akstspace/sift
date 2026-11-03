@@ -2,7 +2,9 @@ export interface CheckItem { id: string; title: string; done: boolean }
 export interface Task { id:string;title:string;description:string;status:string;priority:string;project:string;tags:string[];icon:string;parentId:string;today:boolean;dueDate:string;snoozedUntil:string;checklist:CheckItem[];attachments:string[];source:string;sourceKey:string;mergedInto:string;deletedAt:string;completedAt:string;archivedAt:string;createdAt:string;updatedAt:string;actor:string;revision:number }
 export interface Column { id:string;name:string;color:string;order:number }
 export interface Entity { id:string;name:string;color:string;archived:boolean;icon:string }
-export interface Job { id:string;name:string;prompt:string;directory:string;provider:string;model:string;thinking:string;scheduleType:string;schedule:string;weekdays?:number[];timezone:string;enabled:boolean;timeoutMinutes:number;sessionId:string;nextRun:string;lastRun:string;pending:boolean;includeImages:boolean;revision:number }
+/** One trigger: daily or selected weekdays at HH:MM, an interval such as 2h, or cron. */
+export interface JobSchedule { type:string;schedule:string;weekdays?:number[] }
+export interface Job { id:string;name:string;prompt:string;directory:string;provider:string;model:string;thinking:string;schedules:JobSchedule[];timezone:string;enabled:boolean;timeoutMinutes:number;sessionId:string;nextRun:string;lastRun:string;pending:boolean;includeImages:boolean;revision:number }
 export interface Run { id:string;jobId:string;jobName:string;status:string;startedAt:string;endedAt:string;summary:string;error:string;model:string;sessionId:string;job:Job }
 export interface Settings { id:string;onboarded:boolean;timezone:string;theme:string;view:string;concurrency:number;timeoutMinutes:number;checkUpdates:boolean;desktopNotifications:boolean;backupRetention:number;logRetentionDays:number;trashRetentionDays:number;autoArchiveDays:number;lastBackup:string;backupError:string }
 export interface Notification { id:string;title:string;message:string;read:boolean;at:string }

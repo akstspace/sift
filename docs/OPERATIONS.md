@@ -156,11 +156,20 @@ choosing an explicit model never authorizes a silent fallback.
   Reset memory starts a new session; it does not undo earlier task/tool effects.
 - No automatic whole-job retries, auto-approval, model fallback, or Pi updates.
 
-Daily and selected-weekday schedules use HH:MM. Intervals accept durations
-such as `30m` or `2h` (minimum one minute). Cron has five fields, minute through
-weekday. All wall-clock schedules require an IANA timezone. A repeated local
-minute during the autumn DST transition fires once; a missing spring minute
-maps to the next valid local instant. Intervals use elapsed durations.
+A job has one to 20 schedules and runs at whichever comes next. Schedules due
+in the same minute start one run. Daily and selected-weekday schedules use HH:MM.
+Intervals accept durations such as `30m` or `2h` (minimum one minute), counted
+from the job's last run or save. Cron has five fields, minute through weekday. All
+wall-clock schedules use the job's IANA timezone. A repeated local minute during
+the autumn DST transition fires once; a missing spring minute maps to the next
+valid local instant. Intervals use elapsed durations.
+
+From the CLI, repeat `--schedule` to set a job's schedules, for example
+`sift jobs update ID --revision N --schedule "daily 09:00" --schedule
+"weekdays 17:30 mon-fri"`. With only `--schedule` and `--revision`, an update
+changes nothing else. Only the person can delete a job, from its editor. Deleting
+removes the job and its remembered session; its runs stay in Run history, and a
+running job must be cancelled first.
 
 ## Updates and installation
 

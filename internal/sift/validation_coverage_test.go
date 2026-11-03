@@ -87,10 +87,10 @@ func TestRestoreValidationRejectsBrokenReferences(t *testing.T) {
 			v["job"] = []json.RawMessage{encode(Job{ID: "job", Name: "Invalid"})}
 		}},
 		{"job schedule", "Unknown schedule type", func(v map[string][]json.RawMessage) {
-			v["job"] = []json.RawMessage{encode(Job{ID: "job", Name: "Job", Prompt: "Local fixture", Revision: 1, SessionID: "session", TimeoutMinutes: 30, Timezone: "UTC", ScheduleType: "unknown"})}
+			v["job"] = []json.RawMessage{encode(Job{ID: "job", Name: "Job", Prompt: "Local fixture", Revision: 1, SessionID: "session", TimeoutMinutes: 30, Timezone: "UTC", Schedules: []JobSchedule{{Type: "unknown", Schedule: "09:00"}}})}
 		}},
 		{"valid job", "", func(v map[string][]json.RawMessage) {
-			v["job"] = []json.RawMessage{encode(Job{ID: "job", Name: "Job", Prompt: "Local fixture", Revision: 1, SessionID: "session", TimeoutMinutes: 30, Timezone: "UTC", ScheduleType: "daily", Schedule: "09:00"})}
+			v["job"] = []json.RawMessage{encode(Job{ID: "job", Name: "Job", Prompt: "Local fixture", Revision: 1, SessionID: "session", TimeoutMinutes: 30, Timezone: "UTC", Schedules: []JobSchedule{{Type: "daily", Schedule: "09:00"}}})}
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -206,7 +206,7 @@ func TestGraphValidationDiagnosticsDoNotDependOnInsertionOrder(t *testing.T) {
 
 func TestJobValidationNeverStartsOrPartiallySaves(t *testing.T) {
 	s := testService(t)
-	base := Job{Name: "Local schedule", Prompt: "Authorized fixture", Directory: s.Dir, Timezone: "UTC", ScheduleType: "daily", Schedule: "09:00"}
+	base := Job{Name: "Local schedule", Prompt: "Authorized fixture", Directory: s.Dir, Timezone: "UTC", Schedules: []JobSchedule{{Type: "daily", Schedule: "09:00"}}}
 	for _, tc := range []struct {
 		name string
 		edit func(*Job)
@@ -216,10 +216,10 @@ func TestJobValidationNeverStartsOrPartiallySaves(t *testing.T) {
 		{"provider only", func(v *Job) { v.Provider = "fixture" }}, {"model only", func(v *Job) { v.Model = "fixture" }},
 		{"name length", func(v *Job) { v.Name = strings.Repeat("x", 201) }}, {"prompt length", func(v *Job) { v.Prompt = strings.Repeat("x", (1<<20)+1) }},
 		{"timeout low", func(v *Job) { v.TimeoutMinutes = -1 }}, {"timeout high", func(v *Job) { v.TimeoutMinutes = 1441 }},
-		{"unknown schedule", func(v *Job) { v.ScheduleType = "unknown" }}, {"no weekdays", func(v *Job) { v.ScheduleType = "weekdays" }},
-		{"invalid weekday", func(v *Job) { v.ScheduleType = "weekdays"; v.Weekdays = []int{7} }}, {"timezone", func(v *Job) { v.Timezone = "Unknown/Zone" }},
-		{"short interval", func(v *Job) { v.ScheduleType = "interval"; v.Schedule = "1s" }}, {"clock", func(v *Job) { v.Schedule = "25:00" }},
-		{"cron", func(v *Job) { v.ScheduleType = "cron"; v.Schedule = "invalid" }},
+		{"unknown schedule", func(v *Job) { v.Schedules = []JobSchedule{{Type: "unknown", Schedule: "09:00"}} }}, {"no weekdays", func(v *Job) { v.Schedules = []JobSchedule{{Type: "weekdays", Schedule: "09:00"}} }},
+		{"invalid weekday", func(v *Job) { v.Schedules = []JobSchedule{{Type: "weekdays", Schedule: "09:00", Weekdays: []int{7}}} }}, {"timezone", func(v *Job) { v.Timezone = "Unknown/Zone" }},
+		{"short interval", func(v *Job) { v.Schedules = []JobSchedule{{Type: "interval", Schedule: "1s"}} }}, {"clock", func(v *Job) { v.Schedules = []JobSchedule{{Type: "daily", Schedule: "25:00"}} }},
+		{"cron", func(v *Job) { v.Schedules = []JobSchedule{{Type: "cron", Schedule: "invalid"}} }}, {"no schedules", func(v *Job) { v.Schedules = nil }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			value := base

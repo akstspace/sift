@@ -1861,6 +1861,55 @@ body:has(.drag-preview) .task-card { cursor: grabbing; }
   background: var(--blue-soft);
   border-color: var(--blue);
 }
+.job-schedules {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.job-schedules-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.job-schedules-heading small {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.schedule-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.schedule-row + .schedule-row {
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+.schedule-row-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: -4px -6px -6px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.job-schedules > .schedule-add {
+  align-self: flex-start;
+}
+.job-delete {
+  color: var(--danger);
+}
+@media (min-width: 640px) {
+  .job-delete {
+    margin-right: auto;
+  }
+}
 .memory-section {
   display: flex;
   gap: 16px;
@@ -3023,4 +3072,12 @@ body:has(.drag-preview) .task-card { cursor: grabbing; }
   .page-transition {
     transform: none !important;
   }
+}
+/* Sonner's light rich-color text sits just under 4.5:1 on its tinted
+   backgrounds; darken it to meet WCAG AA. Dark theme already passes. */
+:root [data-sonner-toaster][data-sonner-theme="light"] {
+  --success-text: hsl(140, 100%, 25%);
+  --info-text: hsl(210, 92%, 43%);
+  --warning-text: hsl(31, 92%, 35%);
+  --error-text: hsl(360, 100%, 43%);
 }

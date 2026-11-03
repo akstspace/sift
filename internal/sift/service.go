@@ -3,7 +3,6 @@ package sift
 import (
 	"context"
 	"encoding/json"
-	"github.com/robfig/cron/v3"
 	"log"
 	"os"
 	"path/filepath"
@@ -117,90 +116,6 @@ func (s *Service) Notify(title, message string) {
 	n := Notification{ID: newID("ntf_"), Title: title, Message: message, At: now()}
 	_ = s.Store.Put("notification", n.ID, n, "system", title)
 }
-func nextJob(job Job, after time.Time) (time.Time, error) {
-	loc, err := time.LoadLocation(job.Timezone)
-	if err != nil {
-		return time.Time{}, invalid("Select a valid IANA timezone")
-	}
-	if job.ScheduleType == "interval" {
-		d, e := time.ParseDuration(job.Schedule)
-		if e != nil || d < time.Minute {
-			return time.Time{}, invalid("Interval must be at least 1m, for example 30m or 2h")
-		}
-		return after.Add(d), nil
-	}
-	spec := job.Schedule
-	if job.ScheduleType == "daily" || job.ScheduleType == "weekdays" {
-		clock, e := time.Parse("15:04", spec)
-		if e != nil || clock.Format("15:04") != spec {
-			return time.Time{}, invalid("Daily schedule must be HH:MM")
-		}
-		h, m := clock.Hour(), clock.Minute()
-		for day := 0; day < 370; day++ {
-			date := after.In(loc).AddDate(0, 0, day)
-			if job.ScheduleType == "weekdays" {
-				allowed := false
-				for _, d := range job.Weekdays {
-					if d == int(date.Weekday()) {
-						allowed = true
-					}
-				}
-				if !allowed {
-					continue
-				}
-			}
-			y, mo, d := date.Date()
-			start := time.Date(y, mo, d, 0, 0, 0, 0, loc)
-			desired := h*60 + m
-			seen := false
-			for t := start; t.Before(start.AddDate(0, 0, 1)); t = t.Add(time.Minute) {
-				local := t.In(loc)
-				minute := local.Hour()*60 + local.Minute()
-				if minute < desired {
-					continue
-				}
-				if seen {
-					break
-				}
-				seen = true
-				if t.After(after) {
-					return t, nil
-				}
-			}
-		}
-		return time.Time{}, invalid("Could not calculate next daily occurrence")
-	}
-	if job.ScheduleType != "cron" {
-		return time.Time{}, invalid("Unknown schedule type")
-	}
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-	// Evaluate cron against a monotonic wall-clock timeline. A missing local
-	// minute maps to the next valid instant; a repeated minute fires only once.
-	wall := time.Date(after.In(loc).Year(), after.In(loc).Month(), after.In(loc).Day(), after.In(loc).Hour(), after.In(loc).Minute(), 0, 0, time.UTC)
-	plain, err := parser.Parse(spec)
-	if err != nil {
-		return time.Time{}, invalid("Invalid cron expression: %v", err)
-	}
-	for attempts := 0; attempts < 10000; attempts++ {
-		wall = plain.Next(wall)
-		if wall.IsZero() {
-			break
-		}
-		y, mo, d := wall.Date()
-		midnight := time.Date(y, mo, d, 0, 0, 0, 0, loc)
-		for t := midnight; t.Before(midnight.AddDate(0, 0, 1)); t = t.Add(time.Minute) {
-			l := t.In(loc)
-			if l.Hour()*60+l.Minute() < wall.Hour()*60+wall.Minute() {
-				continue
-			}
-			if t.After(after) {
-				return t, nil
-			}
-			break
-		}
-	}
-	return time.Time{}, invalid("No cron occurrence found within supported range")
-}
 func (s *Service) SaveJob(j Job, expected int, actor string) (Job, error) {
 	if trim(j.Name) == "" || trim(j.Prompt) == "" {
 		return j, invalid("Job name and prompt are required")
@@ -234,18 +149,8 @@ func (s *Service) SaveJob(j Job, expected int, actor string) (Job, error) {
 	if j.TimeoutMinutes < 1 || j.TimeoutMinutes > 1440 {
 		return j, invalid("Timeout must be between 1 and 1440 minutes")
 	}
-	if j.ScheduleType != "daily" && j.ScheduleType != "weekdays" && j.ScheduleType != "cron" && j.ScheduleType != "interval" {
-		return j, invalid("Choose daily, selected weekdays, interval, or cron")
-	}
-	if j.ScheduleType == "weekdays" {
-		if len(j.Weekdays) == 0 {
-			return j, invalid("Choose at least one weekday")
-		}
-		for _, d := range j.Weekdays {
-			if d < 0 || d > 6 {
-				return j, invalid("Invalid weekday")
-			}
-		}
+	if err := normalizeSchedules(&j); err != nil {
+		return j, err
 	}
 	next, err := nextJob(j, time.Now())
 	if err != nil {
@@ -362,6 +267,39 @@ func (s *Service) ResetJob(id string) error {
 	j.Revision++
 	return s.Store.Put("job", id, j, "user", "Reset job memory; old run history retained")
 }
+
+// DeleteJob removes a job and its remembered Pi session. Its runs stay in
+// run history. A running job must be cancelled first, and the revision must
+// match so a job changed elsewhere is not deleted unseen.
+func (s *Service) DeleteJob(id string, expected int) error {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if s.maintenance {
+		return conflict("Sift is paused for maintenance")
+	}
+	var j Job
+	if !s.Store.Get("job", id, &j) {
+		return &APIError{Status: 404, Message: "Job not found"}
+	}
+	if j.Revision != expected {
+		return conflict("Job changed; refresh before deleting")
+	}
+	if _, running := s.active[j.ID]; running {
+		return conflict("Cancel the current run before deleting this job")
+	}
+	if err := s.Store.Put("job", j.ID, nil, "user", "Deleted scheduled job"); err != nil {
+		return err
+	}
+	// The job is gone either way; a leftover memory folder is harmless and
+	// already in backups, so it is logged rather than reported as a failure.
+	if err := removeAll(filepath.Join(s.Dir, "sessions", j.ID)); err != nil {
+		log.Printf("Deleted job %s, but its memory folder remains: %v", j.ID, err)
+	}
+	return nil
+}
+
+var removeAll = os.RemoveAll
+
 func (s *Service) scheduleLoop() {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
@@ -464,6 +402,12 @@ func (s *Service) Schema() map[string]any {
 		"version":  1,
 		"commands": []string{"tasks list/search/get/add/update/tree/duplicates/merge/comments/comment", "columns list", "projects list/add/update", "tags list/add/update", "icons search", "images upload", "jobs list/add/update/run/reset", "jobs run ID --wait", "runs list/get/cancel/watch", "models list", "history", "undo", "backup", "update", "serve"},
 		"task":     Task{}, "job": Job{},
+		"jobSchedules": map[string]any{
+			"field":    "schedules: [{type, schedule, weekdays}], up to 20; the job runs at whichever comes next, and schedules due in the same minute start one run",
+			"types":    map[string]string{"daily": "schedule HH:MM", "weekdays": "schedule HH:MM with weekdays 0-6 (0 is Sunday)", "interval": "schedule duration of at least 1m, such as 30m or 2h, counted from the last run", "cron": "schedule five fields, minute through weekday"},
+			"timezone": "every wall-clock schedule uses the job's IANA timezone",
+			"cli":      `--schedule "daily 09:00" | "weekdays 17:30 mon,wed,fri" | "interval 2h" | "cron 0 9 * * 1-5" (repeatable; replaces all schedules). sift jobs update ID --revision N --schedule SPEC changes only the schedules`,
+		},
 		"comments": map[string]any{"read": "tasks comments ID [--after EVENT_ID]", "post": "tasks comment ID --text TEXT [--request-id KEY] [--actor NAME]", "pageSize": 1000, "order": "ascending event ID; use the last ID as --after until an empty page", "textField": "reason", "maxCharacters": 10000, "changesTaskRevision": false},
 		"progress": map[string]any{
 			"flags":        "--progress auto|always|never; --quiet suppresses progress",

@@ -53,7 +53,7 @@ describe("scheduled jobs without model prompts", () => {
     await user.type(screen.getByRole("textbox", { name: "Working directory" }), "/fixture");
     await user.click(screen.getByRole("button", { name: "Save job" }));
     await waitFor(() => expect(props.refresh).toHaveBeenCalled());
-    expect(mock).toHaveBeenCalledWith("/jobs", "POST", expect.objectContaining({ enabled: false, includeImages: false, directory: "/fixture", timeoutMinutes: 30, schedule: "09:00" }));
+    expect(mock).toHaveBeenCalledWith("/jobs", "POST", expect.objectContaining({ enabled: false, includeImages: false, directory: "/fixture", timeoutMinutes: 30, schedules: [{ type: "daily", schedule: "09:00" }] }));
     expect(mock.mock.calls.some(([path]) => path.endsWith("/run"))).toBe(false);
   });
   it("honors parent-requested creation once and protects unsaved prompts", async () => {
@@ -68,16 +68,83 @@ describe("scheduled jobs without model prompts", () => {
   it("edits all schedule kinds and explicit per-job model/image/enable choices", async () => {
     const { user } = mount(); await user.click(screen.getByRole("button", { name: "Morning planning" }));
     await screen.findByRole("button", { name: "Refresh models" });
-    await choice("Schedule", "Selected weekdays"); await user.click(screen.getByRole("button", { name: "Mon" })); await user.click(screen.getByRole("button", { name: "Sun" }));
-    await choice("Schedule", "Repeating interval"); expect((screen.getByRole("textbox", { name: "Interval" }) as HTMLInputElement).value).toBe("1h");
-    await choice("Schedule", "Advanced cron"); expect((screen.getByRole("textbox", { name: "Cron expression" }) as HTMLInputElement).value).toBe("0 9 * * 1-5");
+    await choice("Repeats", "Selected weekdays"); await user.click(screen.getByRole("button", { name: "Mon" })); await user.click(screen.getByRole("button", { name: "Sun" }));
+    expect(screen.getAllByRole("button", { pressed: true }).map(b => b.textContent)).toEqual(["Sun", "Tue", "Wed", "Thu", "Fri"]);
+    await choice("Repeats", "Repeating interval"); expect((screen.getByRole("textbox", { name: "Interval" }) as HTMLInputElement).value).toBe("1h");
+    expect(screen.queryByRole("group", { name: "Days" })).toBeNull();
+    await choice("Repeats", "Advanced cron"); expect((screen.getByRole("textbox", { name: "Cron expression" }) as HTMLInputElement).value).toBe("0 9 * * 1-5");
     await user.clear(screen.getByRole("textbox", { name: "Cron expression" })); await user.type(screen.getByRole("textbox", { name: "Cron expression" }), "30 10 * * *");
     await choice("Model", "fixture / Reasoner"); await screen.findByRole("button", { name: "Refresh models" });
     await choice("Thinking", "High");
-    await user.click(screen.getByRole("checkbox", { name: /Include Today/ })); await user.click(screen.getByRole("checkbox", { name: /Enable this schedule/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Include Today/ })); await user.click(screen.getByRole("checkbox", { name: /Run on schedule/ }));
     fireEvent.change(screen.getByRole("spinbutton", { name: "Timeout (minutes)" }), { target: { value: "45" } });
     await user.click(screen.getByRole("button", { name: "Save job" }));
-    await waitFor(() => expect(mock).toHaveBeenCalledWith("/jobs", "POST", expect.objectContaining({ provider: "fixture", model: "reasoner", thinking: "high", enabled: true, includeImages: true, scheduleType: "cron", schedule: "30 10 * * *", timeoutMinutes: 45, weekdays: [2, 3, 4, 5, 0], sessionId: "session_test" })));
+    await waitFor(() => expect(mock).toHaveBeenCalledWith("/jobs", "POST", expect.objectContaining({ provider: "fixture", model: "reasoner", thinking: "high", enabled: true, includeImages: true, schedules: [{ type: "cron", schedule: "30 10 * * *" }], timeoutMinutes: 45, sessionId: "session_test" })));
+  });
+  it("adds, edits, and removes several schedules, keeping focus on the list", async () => {
+    const { user } = mount(); await user.click(screen.getByRole("button", { name: "Morning planning" }));
+    await screen.findByRole("button", { name: "Refresh models" });
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).queryByRole("button", { name: /Remove schedule/ })).toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Add schedule" }));
+    const second = within(dialog).getByRole("group", { name: "Schedule 2" });
+    await waitFor(() => expect(document.activeElement).toBe(within(second).getByRole("textbox", { name: "Local time" })));
+    await user.type(within(second).getByRole("textbox", { name: "Local time" }), "17:30");
+    fireEvent.click(within(second).getByRole("combobox", { name: "Repeats" })); fireEvent.click(await screen.findByRole("option", { name: "Selected weekdays" }));
+    expect((within(second).getByRole("textbox", { name: "Local time" }) as HTMLInputElement).value).toBe("09:00");
+    await user.clear(within(second).getByRole("textbox", { name: "Local time" })); await user.type(within(second).getByRole("textbox", { name: "Local time" }), "17:30");
+    await user.click(within(second).getByRole("button", { name: "Sat" }));
+    await user.click(within(dialog).getByRole("button", { name: "Add schedule" }));
+    const third = within(dialog).getByRole("group", { name: "Schedule 3" });
+    fireEvent.click(within(third).getByRole("combobox", { name: "Repeats" })); fireEvent.click(await screen.findByRole("option", { name: "Repeating interval" }));
+    await user.clear(within(third).getByRole("textbox", { name: "Interval" })); await user.type(within(third).getByRole("textbox", { name: "Interval" }), "4h");
+    // Removing the middle schedule moves focus to the one that takes its place.
+    await user.click(within(second).getByRole("button", { name: "Remove schedule 2" }));
+    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Remove schedule 2" })));
+    expect(mock.mock.calls.some(([path]) => path === "/jobs")).toBe(false); // removing never submits the form
+    expect((within(within(dialog).getByRole("group", { name: "Schedule 2" })).getByRole("textbox", { name: "Interval" }) as HTMLInputElement).value).toBe("4h");
+    await user.click(within(dialog).getByRole("button", { name: "Add schedule" }));
+    await user.type(within(within(dialog).getByRole("group", { name: "Schedule 3" })).getByRole("textbox", { name: "Local time" }), "21:00");
+    await user.click(within(dialog).getByRole("button", { name: "Save job" }));
+    await waitFor(() => expect(mock).toHaveBeenCalledWith("/jobs", "POST", expect.objectContaining({ schedules: [{ type: "daily", schedule: "09:00" }, { type: "interval", schedule: "4h" }, { type: "daily", schedule: "21:00" }] })));
+  });
+  it("removes down to one schedule, then focuses Add schedule, and stops adding at the limit", async () => {
+    const full = Array.from({ length: 20 }, (_, i) => ({ type: "interval", schedule: `${i + 1}h` }));
+    const { user } = mount([jobFixture({ schedules: [{ type: "daily", schedule: "09:00" }, { type: "weekdays", schedule: "18:00", weekdays: [0, 6] }] }), jobFixture({ id: "full", name: "Every hour or so", schedules: full })]);
+    expect(screen.getByText("Every day at 09:00 · Weekends at 18:00 · UTC")).toBeDefined();
+    expect(screen.getByText("Every 1h · Every 2h · +18 more · UTC")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Morning planning" })); await screen.findByRole("button", { name: "Refresh models" });
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Remove schedule 1" }));
+    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Add schedule" })));
+    expect(within(dialog).queryByRole("button", { name: /Remove schedule/ })).toBeNull();
+    expect(within(dialog).getAllByRole("button", { pressed: true }).map(b => b.textContent)).toEqual(["Sun", "Sat"]);
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" })); await user.click(screen.getByRole("button", { name: "Discard changes" }));
+    await user.click(screen.getByRole("button", { name: "Every hour or so" })); await screen.findByRole("button", { name: "Refresh models" });
+    expect((within(screen.getByRole("dialog")).getByRole("button", { name: "Add schedule" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("deletes a job only after confirmation, with its revision", async () => {
+    const { props, user } = mount([jobFixture({ revision: 4 })]);
+    const success = vi.spyOn(toast, "success").mockReturnValue(1);
+    await user.click(screen.getByRole("button", { name: "New job" }));
+    expect(within(screen.getByRole("dialog")).queryByRole("button", { name: "Delete job" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Morning planning" })); await screen.findByRole("button", { name: "Refresh models" });
+    await user.click(screen.getByRole("button", { name: "Delete job" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Delete job" });
+    expect(within(confirm).getByText("“Morning planning” stops running and its remembered context is deleted. Past runs stay in Run history.")).toBeDefined();
+    await user.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    expect(mock.mock.calls.some(([, method]) => method === "DELETE")).toBe(false);
+    mock.mockRejectedValueOnce(new Error("Cancel the current run before deleting this job"));
+    await user.click(screen.getByRole("button", { name: "Delete job" }));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Delete job" }));
+    expect((await within(screen.getByRole("alertdialog")).findByRole("alert")).textContent).toBe("Cancel the current run before deleting this job");
+    expect(props.refresh).not.toHaveBeenCalled();
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete job" }));
+    await waitFor(() => expect(mock).toHaveBeenLastCalledWith("/jobs/job_test?revision=4", "DELETE"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(props.refresh).toHaveBeenCalledOnce(); expect(success).toHaveBeenCalledWith("Job deleted");
+    success.mockRestore();
   });
   it("surfaces discovery and save errors without substituting models", async () => {
     mock.mockRejectedValue(new Error("Pi unavailable")); const { user } = mount([jobFixture({ provider: "missing", model: "exact-model" })]);
@@ -101,7 +168,7 @@ describe("scheduled jobs without model prompts", () => {
     await waitFor(() => expect(props.refresh).toHaveBeenCalled()); expect(mock).toHaveBeenCalledWith("/jobs/job_test/reset", "POST", {});
   });
   it("runs only on request and surfaces a failure rather than replaying", async () => {
-    const { props, user } = mount([jobFixture({ enabled: true, provider: "fixture", model: "reasoner", scheduleType: "interval", schedule: "2h" })]);
+    const { props, user } = mount([jobFixture({ enabled: true, provider: "fixture", model: "reasoner", schedules: [{ type: "interval", schedule: "2h" }] })]);
     mock.mockResolvedValueOnce({ id: "run_requested" });
     await user.click(screen.getByRole("button", { name: "Run now" })); await waitFor(() => expect(props.onRun).toHaveBeenCalledWith("run_requested"));
     const error = vi.spyOn(toast, "error").mockReturnValue(1); mock.mockRejectedValueOnce(new Error("Exact model unavailable"));
@@ -127,7 +194,7 @@ describe("scheduled jobs without model prompts", () => {
 describe("real run history presentation", () => {
   const run = (overrides: Partial<Run> = {}): Run => ({ id: "run_test", jobId: "job_test", jobName: "Morning planning", status: "succeeded", startedAt: "2026-01-01T09:00:00Z", endedAt: "2026-01-01T09:01:00Z", summary: "Evidence retained", error: "", model: "fixture/reasoner", sessionId: "session_test", job: jobFixture(), ...overrides });
   function runs(selected = "", values = [run()]) {
-    const props = { snapshot: snapshotFixture({ runs: values }), selected, onSelect: vi.fn(), refresh: vi.fn(async () => {}) };
+    const props = { snapshot: snapshotFixture({ runs: values, jobs: [jobFixture()] }), selected, onSelect: vi.fn(), refresh: vi.fn(async () => {}) };
     return { ...render(<Runs {...props} />, { wrapper: TestProviders }), props, user: userEvent.setup() };
   }
   it("does not invent runs and lets a person choose a real record", async () => {
@@ -197,6 +264,13 @@ describe("real run history presentation", () => {
     expect((await screen.findByRole("alert")).textContent).toBe("Record unavailable"); view.unmount();
     mock.mockResolvedValueOnce({ run: run(), entries: [] }); runs("run_test");
     expect(await screen.findByText(/Older detailed logs expire/)).toBeDefined();
+  });
+  it("keeps a deleted job's runs readable without offering to run it again", async () => {
+    mock.mockResolvedValue({ run: run(), entries: [{ type: "text", text: "Kept after deletion" }] });
+    const props = { snapshot: snapshotFixture({ runs: [run()], jobs: [] }), selected: "run_test", onSelect: vi.fn(), refresh: vi.fn(async () => {}) };
+    render(<Runs {...props} />, { wrapper: TestProviders });
+    expect(await screen.findByText("Kept after deletion")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Run again" })).toBeNull();
   });
   it("does not let an older run response replace a newer selection", async () => {
     const slow = deferred<{ run: Run; entries: { type: string; text: string }[] }>(); mock.mockReturnValueOnce(slow.promise);

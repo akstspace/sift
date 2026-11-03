@@ -23,7 +23,7 @@ func fixturePi(t *testing.T) {
 }
 func fixtureJob(t *testing.T, s *Service, scenario string) Job {
 	t.Helper()
-	j, e := s.SaveJob(Job{Name: scenario, Prompt: "scenario:" + scenario, Directory: s.Dir, Provider: "fixture", Model: "fixture-model", Timezone: "UTC", ScheduleType: "daily", Schedule: "09:00"}, 0, "user")
+	j, e := s.SaveJob(Job{Name: scenario, Prompt: "scenario:" + scenario, Directory: s.Dir, Provider: "fixture", Model: "fixture-model", Timezone: "UTC", Schedules: []JobSchedule{{Type: "daily", Schedule: "09:00"}}}, 0, "user")
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -58,6 +58,7 @@ export function IconButton({
 }) {
   return (
     <Tooltip><TooltipTrigger asChild><Button
+      type="button"
       variant="ghost"
       size="icon"
       className={className}

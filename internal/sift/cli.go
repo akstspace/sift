@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -66,10 +67,12 @@ func DataDir() string {
 type arguments struct {
 	Pos   []string
 	Flags map[string]string
+	// Lists keeps every value of a repeatable flag such as --schedule, in order.
+	Lists map[string][]string
 }
 
 func parseArgs(args []string) arguments {
-	a := arguments{Flags: map[string]string{}}
+	a := arguments{Flags: map[string]string{}, Lists: map[string][]string{}}
 	bools := map[string]bool{"today": true, "enabled": true, "json": true, "check": true, "yes": true, "quiet": true, "wait": true}
 	for i := 0; i < len(args); i++ {
 		v := args[i]
@@ -77,11 +80,13 @@ func parseArgs(args []string) arguments {
 			key := strings.TrimPrefix(v, "--")
 			if k, val, ok := strings.Cut(key, "="); ok {
 				a.Flags[k] = val
+				a.Lists[k] = append(a.Lists[k], val)
 			} else if bools[key] {
 				a.Flags[key] = "true"
 			} else if i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
 				i++
 				a.Flags[key] = args[i]
+				a.Lists[key] = append(a.Lists[key], args[i])
 			} else {
 				a.Flags[key] = "true"
 			}
@@ -198,6 +203,10 @@ projects|tags list|add|update      --name NAME [--id ID] [--color COLOR]
 icons search QUERY                Offline searchable icon catalog
 images upload PATH                Upload local PNG/JPEG/WebP/GIF (20 MB)
 jobs list|add|update|run|reset      Job creation/update uses --file JOB.json
+  --schedule SPEC  Repeatable; replaces the job's schedules. It runs at whichever
+    comes next: "daily 09:00", "weekdays 17:30 mon,wed,fri" (or mon-fri, 0-6),
+    "interval 2h", "cron 0 9 * * 1-5". Times use the job's timezone.
+jobs update ID --revision N --schedule SPEC [--schedule SPEC]  Change only schedules
 jobs run ID --wait                 Start once and follow this run to completion
 runs list|get ID|cancel ID         Live run history and control
 runs watch ID                      Follow run status and new activity (read-only)
@@ -388,16 +397,9 @@ No silent daemon autostart, automatic duplicate merging, or model fallback.`)
 			method = "POST"
 			body = map[string]any{}
 		} else if sub == "add" || sub == "update" {
-			var j Job
-			b, e := os.ReadFile(a.Flags["file"])
+			j, e := c.jobForSave(ctx, sub, get(2), a)
 			if e != nil {
 				return e
-			}
-			if e = json.Unmarshal(b, &j); e != nil {
-				return e
-			}
-			if sub == "update" {
-				j.ID = get(2)
 			}
 			method = "POST"
 			body = j
@@ -507,4 +509,120 @@ No silent daemon autostart, automatic duplicate merging, or model fallback.`)
 	}
 	_, err = out.Write(b)
 	return err
+}
+
+// jobForSave builds the job sent by jobs add/update: from --file JOB.json, or
+// for an update with only --schedule flags, from the stored job. Schedule flags
+// replace the job's schedules; --revision overrides the file's revision.
+func (c *localClient) jobForSave(ctx context.Context, sub, id string, a arguments) (Job, error) {
+	var j Job
+	specs := a.Lists["schedule"]
+	if sub == "update" && id == "" {
+		return j, invalid("A job ID is required: sift jobs update ID")
+	}
+	switch {
+	case a.Flags["file"] != "":
+		b, err := os.ReadFile(a.Flags["file"])
+		if err != nil {
+			return j, err
+		}
+		if err = json.Unmarshal(b, &j); err != nil {
+			return j, err
+		}
+	case sub == "update" && len(specs) > 0:
+		if a.Flags["revision"] == "" {
+			return j, invalid("--revision N is required; read the job's current revision with sift jobs list")
+		}
+		b, err := c.request(ctx, "GET", "/api/jobs", nil)
+		if err != nil {
+			return j, err
+		}
+		var jobs []Job
+		if err = json.Unmarshal(b, &jobs); err != nil {
+			return j, err
+		}
+		i := slices.IndexFunc(jobs, func(job Job) bool { return job.ID == id })
+		if i < 0 {
+			return j, invalid("Job not found")
+		}
+		j = jobs[i]
+	case sub == "add":
+		return j, invalid("Job creation uses --file JOB.json; add --schedule SPEC to set its schedules")
+	default:
+		return j, invalid("Use --file JOB.json, or --revision N with --schedule SPEC to change only the schedules")
+	}
+	if len(specs) > 0 {
+		j.Schedules = make([]JobSchedule, 0, len(specs))
+		for _, spec := range specs {
+			sc, err := parseScheduleSpec(spec)
+			if err != nil {
+				return j, err
+			}
+			j.Schedules = append(j.Schedules, sc)
+		}
+	}
+	if r := a.Flags["revision"]; r != "" {
+		n, err := strconv.Atoi(r)
+		if err != nil || n < 1 {
+			return j, invalid("--revision must be a positive number")
+		}
+		j.Revision = n
+	}
+	if sub == "update" {
+		j.ID = id
+	}
+	return j, nil
+}
+
+var weekdayNames = map[string]int{"sun": 0, "mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6, "sunday": 0, "monday": 1, "tuesday": 2, "wednesday": 3, "thursday": 4, "friday": 5, "saturday": 6}
+
+// parseScheduleSpec reads one --schedule value. The service validates the
+// time, duration, or cron fields, so this only splits the value apart.
+func parseScheduleSpec(spec string) (JobSchedule, error) {
+	usage := invalid(`Schedule %q: use "daily 09:00", "weekdays 17:30 mon,wed,fri", "interval 2h", or "cron 0 9 * * 1-5"`, spec)
+	fields := strings.Fields(spec)
+	if len(fields) < 2 {
+		return JobSchedule{}, usage
+	}
+	switch kind := strings.ToLower(fields[0]); {
+	case kind == "cron":
+		return JobSchedule{Type: kind, Schedule: strings.Join(fields[1:], " ")}, nil
+	case (kind == "daily" || kind == "interval") && len(fields) == 2:
+		return JobSchedule{Type: kind, Schedule: fields[1]}, nil
+	case kind == "weekdays" && len(fields) == 3:
+		days, ok := parseWeekdays(fields[2])
+		if !ok {
+			return JobSchedule{}, invalid("Schedule %q: days are sun–sat or 0–6, comma-separated, with ranges such as mon-fri", spec)
+		}
+		return JobSchedule{Type: kind, Schedule: fields[1], Weekdays: days}, nil
+	}
+	return JobSchedule{}, usage
+}
+
+func parseWeekdays(list string) ([]int, bool) {
+	day := func(v string) (int, bool) {
+		if d, ok := weekdayNames[v]; ok {
+			return d, true
+		}
+		n, err := strconv.Atoi(v)
+		return n, err == nil && n >= 0 && n <= 6
+	}
+	var days []int
+	for _, part := range strings.Split(strings.ToLower(list), ",") {
+		from, to, isRange := strings.Cut(part, "-")
+		first, ok := day(from)
+		last := first
+		if isRange {
+			var okLast bool
+			last, okLast = day(to)
+			ok = ok && okLast && first <= last
+		}
+		if !ok {
+			return nil, false
+		}
+		for d := first; d <= last; d++ {
+			days = append(days, d)
+		}
+	}
+	return days, true
 }

@@ -30,7 +30,7 @@ func TestBackupRestoreHistoryMemoryLogsAndRequests(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	j, e := s.SaveJob(Job{Name: "Review", Prompt: "Review work", Directory: s.Dir, ScheduleType: "daily", Schedule: "09:00", Timezone: "UTC", Enabled: true}, 0, "user")
+	j, e := s.SaveJob(Job{Name: "Review", Prompt: "Review work", Directory: s.Dir, Schedules: []JobSchedule{{Type: "daily", Schedule: "09:00"}}, Timezone: "UTC", Enabled: true}, 0, "user")
 	if e != nil {
 		t.Fatal(e)
 	}

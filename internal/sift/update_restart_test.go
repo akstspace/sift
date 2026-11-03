@@ -184,7 +184,7 @@ func TestInstalledUpdateRestartsSiftWhileServingAndIdle(t *testing.T) {
 
 func TestScheduledRunsWaitWhileARestartIsPending(t *testing.T) {
 	s := testService(t)
-	j, err := s.SaveJob(Job{Name: "Due now", Prompt: "check", Directory: s.Dir, ScheduleType: "daily", Schedule: "09:00", Timezone: "UTC", Enabled: true, TimeoutMinutes: 1}, 0, "user")
+	j, err := s.SaveJob(Job{Name: "Due now", Prompt: "check", Directory: s.Dir, Schedules: []JobSchedule{{Type: "daily", Schedule: "09:00"}}, Timezone: "UTC", Enabled: true, TimeoutMinutes: 1}, 0, "user")
 	if err != nil {
 		t.Fatal(err)
 	}

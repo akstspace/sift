@@ -367,6 +367,22 @@ func (s *Service) routes() http.Handler {
 		}
 		writeJSON(w, 200, out)
 	})
+	mux.HandleFunc("DELETE /api/jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if actorOf(r) != "user" {
+			apiError(w, &APIError{Status: 403, Message: "Only the user can delete jobs"})
+			return
+		}
+		revision, err := strconv.Atoi(r.URL.Query().Get("revision"))
+		if err != nil {
+			apiError(w, invalid("Include the job's current revision"))
+			return
+		}
+		if err = s.DeleteJob(r.PathValue("id"), revision); err != nil {
+			apiError(w, err)
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"deleted": true})
+	})
 	mux.HandleFunc("POST /api/jobs/{id}/run", func(w http.ResponseWriter, r *http.Request) {
 		run, err := s.RunJob(r.PathValue("id"))
 		if err != nil {
