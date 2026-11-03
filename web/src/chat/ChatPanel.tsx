@@ -14,13 +14,13 @@ import {
   IconX as X,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
-import { Button, IconButton } from "../components/shared";
+import { Button, IconButton, MonoMark } from "../components/shared";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Transcript, contextLabel } from "../transcript/Transcript";
 import type { CatalogIcon, Snapshot, Task } from "../types";
 import { settle } from "../motion";
 import { MAX_IMAGES, readImages, type ChatDialog, type ChatImage, type ChatInfo, type PiCommand, type useChat as UseChat } from "./useChat";
-import { PiGlyph, type ChatView } from "./Chat";
+import type { ChatView } from "./Chat";
 
 type Chat = ReturnType<typeof UseChat>;
 
@@ -60,9 +60,9 @@ export function ChatPanel({ chat, snapshot, catalog, view, onOpenTask, onOpenRun
   return (
     <>
       <header className="chat-header">
-        <PiGlyph size={26} />
+        <span className="chat-header-mark"><MonoMark size={18} /></span>
         <div className="chat-heading">
-          <h2>Pi</h2>
+          <h2>Ask Sift</h2>
           <ModelPicker chat={chat} />
         </div>
         <IconButton label="New chat" onClick={() => chat.newChat().catch(e => toast.error((e as Error).message))} disabled={chat.phase === "loading"}>
@@ -85,14 +85,14 @@ export function ChatPanel({ chat, snapshot, catalog, view, onOpenTask, onOpenRun
             )}
             <AnimatePresence initial={false}>
               {replying && (
-                <motion.div key="typing" className="typing" role="status" aria-label="Pi is replying" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <motion.div key="typing" className="typing" role="status" aria-label="Sift is replying" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                   <span /><span /><span />
                 </motion.div>
               )}
             </AnimatePresence>
             {chat.queue.map((q, i) => (
               <div key={i + q} className="t-item t-user queued">
-                <div className="user-message pending"><div className="user-bubble">{q.replace(/^<sift-context>[\s\S]*?<\/sift-context>\s*/, "")}</div><span className="user-context">Queued — Pi reads it after the current step</span></div>
+                <div className="user-message pending"><div className="user-bubble">{q.replace(/^<sift-context>[\s\S]*?<\/sift-context>\s*/, "")}</div><span className="user-context">Queued — Sift reads it after the current step</span></div>
               </div>
             ))}
             {chat.dialogs.map(d => <DialogCard key={d.id} dialog={d} onAnswer={v => {
@@ -143,7 +143,7 @@ function EmptyChat({ view, snapshot, onPick }: { view: ChatView; snapshot: Snaps
   return (
     <div className="chat-empty">
       <h3>What can I sift for you?</h3>
-      <p>Pi can read and change your tasks, and use your usual tools. Every change shows up here.</p>
+      <p>Sift uses Pi to read and change your tasks and to use your usual tools. Every change shows up here.</p>
       <ul>
         {ideas.map((idea, i) => (
           <motion.li key={idea} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28, ease: settle, delay: 0.12 + i * 0.04 }}>
@@ -225,8 +225,8 @@ function DialogCard({ dialog, onAnswer }: { dialog: ChatDialog; onAnswer: (v: { 
   const remaining = dialog.timeout ? Math.max(0, dialog.timeout - (Date.now() - (dialog.seenAt || Date.now()))) : 0;
   return (
     <motion.section className="chat-question" aria-labelledby={id} initial={reduced ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={reduced ? { duration: 0.12 } : { duration: 0.3, ease: settle }}>
-      <span className="question-eyebrow"><span aria-hidden />Pi is waiting for you</span>
-      <h3 id={id}>{dialog.title || "Pi needs an answer"}</h3>
+      <span className="question-eyebrow"><span aria-hidden />Sift is waiting for you</span>
+      <h3 id={id}>{dialog.title || "Sift needs an answer"}</h3>
       {dialog.message && <p>{dialog.message}</p>}
       {dialog.method === "select" && (
         <div className="question-options">
@@ -366,8 +366,8 @@ function Composer({ chat, view, draft, setDraft, composer, autoFocus, onSent }: 
           onChange={e => { setDraft(e.target.value); setError(""); }}
           onKeyDown={onKey}
           onPaste={e => { const files = [...e.clipboardData.files].filter(f => f.type.startsWith("image/")); if (files.length) { e.preventDefault(); add(files); } }}
-          placeholder={chat.running ? "Add to what Pi is doing…" : "Ask Pi, or type / for commands"}
-          aria-label="Message Pi"
+          placeholder={chat.running ? "Add to what Sift is doing…" : "Ask Sift, or type / for commands"}
+          aria-label="Message Sift"
           aria-controls={matches.length ? menuId : undefined}
           aria-activedescendant={matches.length ? menuId + "-" + menu : undefined}
           aria-autocomplete="list"
@@ -394,7 +394,7 @@ function Composer({ chat, view, draft, setDraft, composer, autoFocus, onSent }: 
               </motion.span>
             )}
           </AnimatePresence>
-          <IconButton label={chat.running ? "Send — Pi reads it after the current step" : "Send"} className="composer-send" onClick={submit} disabled={!canSend}>
+          <IconButton label={chat.running ? "Send — Sift reads it after the current step" : "Send"} className="composer-send" onClick={submit} disabled={!canSend}>
             <ArrowUp size={16} />
           </IconButton>
         </div>

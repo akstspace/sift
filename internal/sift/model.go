@@ -41,6 +41,10 @@ type Task struct {
 	UpdatedAt    string          `json:"updatedAt"`
 	Actor        string          `json:"actor"`
 	Revision     int             `json:"revision"`
+	// AgentChange names the agent whose status change awaits the person's
+	// review. Sift owns it: an agent's status change sets it, and the person's
+	// own saves or an explicit review clear it.
+	AgentChange string `json:"agentChange,omitempty"`
 }
 
 func (t *Task) UnmarshalJSON(data []byte) error {

@@ -5,6 +5,7 @@ import type { CatalogIcon, Snapshot, Task } from "../types";
 import { settle } from "../motion";
 import { preloadable } from "../lib/preloadable";
 import { useChat } from "./useChat";
+import { MonoMark } from "../components/shared";
 
 // The panel (and the Markdown renderer it brings) loads on first open, or
 // once the workspace is idle, so the pill costs nothing up front.
@@ -22,10 +23,6 @@ export interface ChatView {
   context: string;
 }
 
-/** Pi's mark: the letter it is named for. */
-export function PiGlyph({ size = 22 }: { size?: number }) {
-  return <span className="pi-glyph" style={{ width: size, height: size, fontSize: size * 0.62 }} aria-hidden>π</span>;
-}
 
 export function ChatDock({ snapshot, catalog, view, onOpenTask, onOpenRun, raised = false }: {
   snapshot: Snapshot;
@@ -87,7 +84,7 @@ export function ChatDock({ snapshot, catalog, view, onOpenTask, onOpenRun, raise
 
   const waiting = chat.dialogs.length > 0;
   const pillState = waiting ? "question" : chat.running ? "working" : chat.unread ? "unread" : "idle";
-  const pillText = { question: "Pi has a question", working: "Pi is working…", unread: "New reply from Pi", idle: "Ask Pi" }[pillState];
+  const pillText = { question: "Sift has a question", working: "Sift is working…", unread: "New reply from Sift", idle: "Ask Sift" }[pillState];
   return (
     <div className={"chat-dock" + (raised ? " raised" : "") + (open ? " is-open" : "")}>
       <AnimatePresence initial={false} mode="popLayout">
@@ -97,7 +94,7 @@ export function ChatDock({ snapshot, catalog, view, onOpenTask, onOpenRun, raise
             layoutId="chat-surface"
             className="chat-panel"
             role="complementary"
-            aria-label="Chat with Pi"
+            aria-label="Ask Sift"
             style={{ borderRadius: 20 }}
             transition={reduced ? { duration: 0.12 } : dockSpring}
           >
@@ -123,7 +120,7 @@ export function ChatDock({ snapshot, catalog, view, onOpenTask, onOpenRun, raise
             aria-keyshortcuts="Meta+J Control+J"
           >
             <motion.span className="chat-pill-inner" initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.18, delay: reduced ? 0 : 0.1 } }} exit={{ opacity: 0, transition: { duration: 0.06 } }}>
-              <PiGlyph size={22} />
+              <span className="chat-pill-mark"><MonoMark size={16} /></span>
               <AnimatePresence mode="popLayout" initial={false}>
                 <motion.span key={pillState} className="chat-pill-text" initial={{ opacity: 0, y: reduced ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: reduced ? 0 : -6 }} transition={{ duration: 0.2, ease: settle }}>
                   {pillState !== "idle" && <span className={"pill-signal " + pillState} aria-hidden />}

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import { api, upload } from "../api";
 import { newTask, type HistoryEntry, type Snapshot, type Task } from "../types";
-import { catalogFixture, deferred, snapshotFixture, taskFixture, TestProviders } from "../test/fixtures";
+import { catalogFixture, jobFixture, deferred, snapshotFixture, taskFixture, TestProviders } from "../test/fixtures";
 import { TaskDetail } from "./TaskDetail";
 import { useDraftGuard } from "./DraftGuard";
 import type { ComponentProps } from "react";
@@ -81,6 +81,39 @@ describe("task sheet read, draft, and save contracts", () => {
     expect(activity.textContent).toContain("You"); expect(activity.textContent).toContain("A useful update"); expect(activity.querySelector("script")).toBeNull();
     expect(within(activity).queryByRole("button", { name: "Undo history entry 42" })).toBeNull();
     expect((screen.getByRole("textbox", { name: "Task title" }) as HTMLTextAreaElement).value).toContain("unsaved");
+  });
+  it("asks the person to review an agent's status change, and clears it on Looks good", async () => {
+    const before = taskFixture({ revision: 1 }), after = taskFixture({ status: "done", revision: 2, agentChange: "chat" });
+    const change: HistoryEntry = { id: 7, kind: "task", entityId: after.id, actor: "chat", reason: "CI passed at dc2ea74", at: "2026-11-03T16:00:00Z", before, after };
+    const { props, user } = mount(after, {}, [change]);
+    const line = (await screen.findByText("CI passed at dc2ea74", { selector: ".agent-review-reason" })).closest(".agent-review") as HTMLElement;
+    expect(line.textContent).toContain("Sift moved this to Done");
+    apiMock.mockImplementation(async path => path.endsWith("/review") ? { ...after, agentChange: undefined } : path.includes("duplicates") ? [] : { history: [change] });
+    await user.click(within(line).getByRole("button", { name: "Looks good" }));
+    expect(apiMock).toHaveBeenCalledWith("/tasks/" + after.id + "/review", "POST", {});
+    expect(props.refresh).toHaveBeenCalled();
+    // Undo goes through the same confirmation as Activity.
+    await user.click(within(line).getByRole("button", { name: "Undo" }));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Undo change" }));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith("/undo/7", "POST", {}));
+    expect(props.onClose).toHaveBeenCalled();
+  });
+  it("keeps the review line when reviewing fails, and hides Undo once newer changes exist", async () => {
+    const after = taskFixture({ status: "done", revision: 3, agentChange: "job:job_1" });
+    const change: HistoryEntry = { id: 8, kind: "task", entityId: after.id, actor: "job:job_1", reason: "", at: "2026-11-03T16:00:00Z", before: taskFixture(), after: { ...after, revision: 2 } };
+    const { user } = mount(after, { jobs: [jobFixture({ id: "job_1", name: "Morning planning" })] }, [change]);
+    const line = (await screen.findByText("Morning planning", { selector: ".agent-review strong" })).closest(".agent-review") as HTMLElement;
+    expect(line.textContent).toContain("Morning planning moved this to Done.");
+    expect(within(line).queryByRole("button", { name: "Undo" })).toBeNull();
+    apiMock.mockImplementation(async path => { if (path.endsWith("/review")) throw new Error("Reviews paused during backup/update"); return path.includes("duplicates") ? [] : { history: [change] }; });
+    await user.click(within(line).getByRole("button", { name: "Looks good" }));
+    expect((await within(line).findByRole("alert")).textContent).toBe("Reviews paused during backup/update");
+    expect((within(line).getByRole("button", { name: "Looks good" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+  it("shows no review line for a task without an unreviewed agent change", async () => {
+    mount(taskFixture({ status: "done", agentChange: "chat", deletedAt: "2026-11-03T16:00:00Z" }));
+    await screen.findByRole("list", { name: "Task activity" }).catch(() => {});
+    expect(document.querySelector(".agent-review")).toBeNull();
   });
   it("preserves a failed comment and reuses its request ID on retry, protecting unposted comments", async () => {
     const { props, user } = mount(); const input = screen.getByRole("textbox", { name: "Add a comment" });

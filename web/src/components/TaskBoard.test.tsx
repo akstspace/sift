@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { catalogFixture, snapshotFixture, taskFixture, TestProviders } from "../test/fixtures";
+import { catalogFixture, jobFixture, snapshotFixture, taskFixture, TestProviders } from "../test/fixtures";
 import type { Task } from "../types";
 import { columnCoordinates, TaskBoard } from "./TaskBoard";
 const preference = vi.hoisted(() => ({ reduced: false }));
@@ -40,6 +40,22 @@ describe("whole-card tasks with independent actions", () => {
     await user.click(screen.getByRole("button", { name: "Hide subtasks for " + parent.title }));
     await waitFor(() => expect(screen.queryByRole("button", { name: child.title })).toBeNull());
     await user.click(screen.getByRole("button", { name: "Show subtasks for " + parent.title })); expect(screen.getByRole("button", { name: child.title })).toBeDefined();
+  });
+  it("marks tasks an agent moved with a quiet AI badge until they're reviewed", () => {
+    const parent = taskFixture({ title: "Fix staging CI", status: "done", agentChange: "job:job_1" });
+    const child = taskFixture({ id: "child", parentId: parent.id, title: "Book the venue", agentChange: "chat" });
+    const plain = taskFixture({ id: "plain", title: "Pay rent" });
+    const { unmount } = render(<TaskBoard tasks={[parent, child, plain]} allTasks={[parent, child, plain]} view="board" columns={snapshotFixture().columns} projects={[]} catalog={catalogFixture} jobs={[jobFixture({ id: "job_1", name: "Morning planning" })]} today="2026-01-02" onOpen={vi.fn()} onAdd={vi.fn()} onChange={vi.fn(async () => {})} />, { wrapper: TestProviders });
+    const badges = [...document.querySelectorAll(".agent-badge")];
+    expect(badges.map(b => b.getAttribute("title")).sort()).toEqual([
+      "Morning planning changed the status. Open the task to review it.",
+      "Sift changed the status. Open the task to review it.",
+    ]);
+    expect(screen.getByText("Morning planning changed the status. Open the task to review it.").className).toBe("sr-only");
+    unmount();
+    // Without job names the badge still says it was a job.
+    mount([taskFixture({ title: "Unnamed", agentChange: "job:job_gone" })]);
+    expect(document.querySelector(".agent-badge")?.getAttribute("title")).toBe("A deleted job changed the status. Open the task to review it.");
   });
   it("offers explicit task creation rather than inventing sample tasks", async () => {
     const { props, user } = mount(); await user.click(screen.getByRole("button", { name: "Create a task" })); expect(props.onAdd).toHaveBeenCalledWith(); expect(props.onOpen).not.toHaveBeenCalled();

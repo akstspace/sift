@@ -107,7 +107,7 @@ func TestChatConversationStreamsPersistsAndStartsOver(t *testing.T) {
 	for i := 0; i+1 < len(args); i++ {
 		flags[args[i]] = args[i+1]
 	}
-	if flags["--session-id"] != session || flags["--session-dir"] != filepath.Join(s.Dir, "sessions", "chat") || !strings.Contains(flags["--append-system-prompt"], "--actor chat") || !strings.Contains(flags["--append-system-prompt"], s.Dir) {
+	if flags["--session-id"] != session || flags["--session-dir"] != filepath.Join(s.Dir, "sessions", "chat") || !strings.Contains(flags["--append-system-prompt"], "--actor chat") || !strings.Contains(flags["--append-system-prompt"], "Keep task status current") || !strings.Contains(flags["--append-system-prompt"], s.Dir) {
 		t.Fatalf("Pi started without the chat's session and guide: %v", args)
 	}
 

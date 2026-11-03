@@ -43,6 +43,14 @@ export function Mark({ animate = false }: { animate?: boolean }) {
     </svg>
   );
 }
+/** Sift's mark in one colour (the surrounding text colour), for small places such as the chat pill. */
+export function MonoMark({ size = 18, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg viewBox="0 0 44 44" width={size} height={size} aria-hidden="true" focusable="false" className={("sift-mono " + className).trim()} fill="currentColor">
+      {[[0, 0], [16, 0], [32, 0], [8, 16], [24, 16], [16, 32]].map(([x, y]) => <rect key={x + "," + y} x={x} y={y} width="12" height="12" rx="4" />)}
+    </svg>
+  );
+}
 export function IconButton({
   label,
   children,

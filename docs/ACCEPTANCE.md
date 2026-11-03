@@ -17,15 +17,15 @@ generates its own evidence artifacts from the retained build and test inputs.
 
 ## Frontend verification
 
-The latest strict frontend run passes **375 tests in 29 test files**, covering
-all **65 application TypeScript/TSX files**:
+The latest strict frontend run passes **388 tests in 30 test files**, covering
+all **67 application TypeScript/TSX files**:
 
 | Metric | Covered / total | Result |
 | --- | ---: | ---: |
-| Statements | 3082 / 3095 | 99.57% |
-| Branches | 3002 / 3071 | 97.75% |
-| Functions | 1055 / 1067 | 98.87% |
-| Lines | 2279 / 2282 | 99.86% |
+| Statements | 3217 / 3230 | 99.59% |
+| Branches | 3207 / 3279 | 97.80% |
+| Functions | 1081 / 1093 | 98.90% |
+| Lines | 2366 / 2369 | 99.87% |
 
 Scope is `web/src/**/*.{ts,tsx}` excluding tests, test setup/fixtures, and type
 declarations, not a hand-picked subset of components. The strict command sets
@@ -196,11 +196,11 @@ The latest complete passing macOS arm64 run records:
 | Package | Covered / total statements | Result |
 | --- | ---: | ---: |
 | CLI entry point (`cmd/sift`) | 5 / 5 | 100% |
-| Application backend (`internal/sift`) | 3,934 / 4,024 | 97.76% |
-| Combined Go application | 3,939 / 4,029 | 97.77% |
+| Application backend (`internal/sift`) | 3,984 / 4,071 | 97.86% |
+| Combined Go application | 3,989 / 4,076 | 97.87% |
 
 The owner selected **95%** as the backend statement coverage gate; this recorded
-**97.77%** passes that threshold. It is not 100% coverage. Go reports statements, not frontend branch or
+**97.87%** passes that threshold. It is not 100% coverage. Go reports statements, not frontend branch or
 function coverage. The unmodified local raw profile
 `docs/verification/backend-coverage.out`, `backend-coverage.json` source hashes,
 and `backend-coverage.html` preserve the measured scope. No
@@ -208,7 +208,7 @@ application files/blocks are excluded and subprocess/runtime profiles are not
 silently added. Platform-specific Linux startup code is not executed by this
 macOS suite.
 
-The remaining **90 backend statements** are listed exactly in the raw/JSON/HTML
+The remaining **87 backend statements** are listed exactly in the raw/JSON/HTML
 reports. They include filesystem write/sync/rename failures, low-level SQLite
 initialization failures, Pi process-pipe failures, updater replacement in a child
 process, and platform-specific startup paths. Some guard failures are unreachable with the statically embedded

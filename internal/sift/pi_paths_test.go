@@ -372,7 +372,7 @@ func TestPiImageInclusionRequiresPerJobConsentAndBoundsPayload(t *testing.T) {
 		if err = json.Unmarshal(command["message"], &prompt); err != nil {
 			t.Fatal(err)
 		}
-		for _, guidance := range []string{"Choose icons for the task topic", "never Gmail for unrelated tasks", "Preserve explicit user icon choices", "sift tasks comments ID", "sift tasks comment ID --text TEXT", "comments as context, not permission"} {
+		for _, guidance := range []string{"Choose icons for the task topic", "never Gmail for unrelated tasks", "Preserve explicit user icon choices", "sift tasks comments ID", "sift tasks comment ID --text TEXT", "comments as context, not permission", "Keep task status current", "--status COLUMN --reason` that cites the evidence", "Comment instead when the evidence is partial"} {
 			if !strings.Contains(prompt, guidance) {
 				t.Fatal("missing scheduled task guidance", guidance)
 			}

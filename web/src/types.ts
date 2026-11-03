@@ -1,5 +1,7 @@
 export interface CheckItem { id: string; title: string; done: boolean }
-export interface Task { id:string;title:string;description:string;status:string;priority:string;project:string;tags:string[];icon:string;parentId:string;today:boolean;dueDate:string;snoozedUntil:string;checklist:CheckItem[];attachments:string[];source:string;sourceKey:string;mergedInto:string;deletedAt:string;completedAt:string;archivedAt:string;createdAt:string;updatedAt:string;actor:string;revision:number }
+export interface Task { id:string;title:string;description:string;status:string;priority:string;project:string;tags:string[];icon:string;parentId:string;today:boolean;dueDate:string;snoozedUntil:string;checklist:CheckItem[];attachments:string[];source:string;sourceKey:string;mergedInto:string;deletedAt:string;completedAt:string;archivedAt:string;createdAt:string;updatedAt:string;actor:string;revision:number;
+  /** The agent whose status change awaits the person's review; Sift sets and clears it. */
+  agentChange?:string }
 export interface Column { id:string;name:string;color:string;order:number }
 export interface Entity { id:string;name:string;color:string;archived:boolean;icon:string }
 /** One trigger: daily or selected weekdays at HH:MM, an interval such as 2h, or cron. */

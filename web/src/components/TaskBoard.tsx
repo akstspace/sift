@@ -27,7 +27,8 @@ import {
   IconPaperclip as Paperclip,
   IconPlus as Plus,
 } from "@tabler/icons-react";
-import type { CatalogIcon, Column, Entity, Task } from "../types";
+import type { CatalogIcon, Column, Entity, Job, Task } from "../types";
+import { AgentBadge } from "./AgentBadge";
 import { Action, Button, Empty, TaskIcon } from "./shared";
 import { cardMotion, settle } from "../motion";
 
@@ -37,6 +38,8 @@ interface Props {
   columns: Column[];
   projects: Entity[];
   catalog: CatalogIcon[];
+  /** Names the job behind an AI badge. */
+  jobs?: Job[];
   view: string;
   onOpen: (t: Task) => void;
   onAdd: (status?: string, parent?: string) => void;
@@ -117,6 +120,7 @@ function TaskCard({
           <Action className={c.status === "done" ? "struck" : ""} onClick={() => props.onOpen(c)}>
             {c.title}
           </Action>
+          {c.agentChange && <AgentBadge actor={c.agentChange} jobs={props.jobs ?? []} />}
           <ChevronRight size={12} />
         </div>
       ))}
@@ -191,11 +195,13 @@ function TaskCard({
         )}
       </div>
       {(task.priority !== "none" ||
+        task.agentChange ||
         project ||
         task.dueDate ||
         task.attachments.length > 0 ||
         childrenTasks.length > 0) && (
         <div className="task-meta">
+          {task.agentChange && <AgentBadge actor={task.agentChange} jobs={props.jobs ?? []} />}
           {priorities[task.priority] && (
             <span className={"priority " + task.priority}>
               <span />

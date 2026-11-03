@@ -288,6 +288,26 @@ func (s *Service) routes() http.Handler {
 		}
 		writeJSON(w, 200, event)
 	})
+	mux.HandleFunc("POST /api/tasks/{id}/review", func(w http.ResponseWriter, r *http.Request) {
+		// Review is the person's sign-off on an agent's change; an agent can't give it.
+		if actorOf(r) != "user" {
+			apiError(w, &APIError{Status: 403, Message: "Only the person using Sift can review an agent's change"})
+			return
+		}
+		s.runMu.Lock()
+		paused := s.maintenance
+		s.runMu.Unlock()
+		if paused {
+			apiError(w, conflict("Reviews paused during backup/update"))
+			return
+		}
+		t, err := s.Store.ReviewTask(r.PathValue("id"))
+		if err != nil {
+			apiError(w, err)
+			return
+		}
+		writeJSON(w, 200, t)
+	})
 	mux.HandleFunc("POST /api/tasks/{id}/merge", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Target         string `json:"target"`

@@ -784,6 +784,7 @@ function Workspace() {
                           columns={snapshot.columns}
                           projects={snapshot.projects}
                           catalog={catalog}
+                          jobs={snapshot.jobs}
                           view={taskView}
                           onOpen={openTask}
                           onAdd={addTask}

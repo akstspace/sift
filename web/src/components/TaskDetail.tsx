@@ -1,6 +1,6 @@
 import { Action } from "./shared";
 import { IconPicker } from "./IconPicker";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Choice } from "./Choice";
@@ -58,6 +58,7 @@ import { taskSheetMotion } from "../motion";
 import { useIsMobile } from "../hooks/use-mobile";
 import { TaskTitle, type TaskTitleHandle } from "./TaskTitle";
 import { DoneReasonDialog } from "./DoneReasonDialog";
+import { Activity, AgentReview } from "./Activity";
 
 export function TaskDetail({
   initial,
@@ -201,6 +202,20 @@ export function TaskDetail({
     } catch (e) { setCommentError((e as Error).message); }
     finally { posting.current = false; setBusy(false); }
   };
+  const undoEntry = (h: HistoryEntry, trigger: (open: () => void) => ReactNode) => (
+    <Confirm
+      title="Undo change"
+      description="Undo this action only if no newer changes would be overwritten. Related merge changes are restored together."
+      action={async () => {
+        await api("/undo/" + h.id, "POST", {});
+        await refresh();
+        onClose();
+        toast.success("Change undone");
+      }}
+    >
+      {trigger}
+    </Confirm>
+  );
   const addImages = async (files: File[]) => {
     if (busy || !files.length) return;
     setBusy(true);
@@ -362,6 +377,15 @@ export function TaskDetail({
                 finally { setBusy(false); }
               }}><Undo2 size={16} />Reopen task</Button>}
             </div>}
+            {current?.agentChange && !current.deletedAt && !current.mergedInto && (
+              <AgentReview
+                task={current}
+                history={history}
+                lookups={snapshot}
+                onReviewed={async () => { await api("/tasks/" + current.id + "/review", "POST", {}); await refresh(); }}
+                undo={h => undoEntry(h, open => <Button type="button" variant="ghost" size="sm" onClick={open}><Undo2 size={14} aria-hidden />Undo</Button>)}
+              />
+            )}
             <div className="task-properties">
               <Field label="Status">
                 <Choice value={task.status} onValueChange={v => update("status", v)} options={[...snapshot.columns].sort((a, b) => a.order - b.order).map(c => ({ value: c.id, label: c.name }))} />
@@ -705,45 +729,22 @@ export function TaskDetail({
                   {commentError && <p className="error" role="alert">{commentError}</p>}
                   <Button type="button" variant="outline" disabled={busy || !comment.trim()} onClick={postComment}>Post comment</Button>
                 </div>}
-                <ol className="history-list" aria-label="Task activity">
-                  {[...history].reverse().map((h) => (
-                    <li key={h.id}>
-                      <span className="history-node" />
-                      <div>
-                        <strong>{h.actor === "user" ? "You" : h.actor}</strong>
-                        <p>
-                          {h.kind === "comment" && <span className="activity-kind">Comment · </span>}{h.reason ||
-                            (!h.before
-                              ? "Created this task"
-                              : "Updated this task")}
-                        </p>
-                        <time>{friendlyTime(h.at)}</time>
-                      </div>
-                      {h.kind === "task" && <Confirm
-                        title="Undo change"
-                        description="Undo this action only if no newer changes would be overwritten. Related merge changes are restored together."
-                        action={async () => {
-                          await api("/undo/" + h.id, "POST", {});
-                          await refresh();
-                          onClose();
-                          toast.success("Change undone");
-                        }}
-                      >
-                        {(open) => (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            aria-label={"Undo history entry " + h.id}
-                            onClick={open}
-                          >
-                            <Undo2 size={14} />
-                          </Button>
-                        )}
-                      </Confirm>}
-                    </li>
+                <Activity
+                  history={history}
+                  lookups={snapshot}
+                  undo={h => undoEntry(h, open => (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={"Undo history entry " + h.id}
+                      title="Undo this change"
+                      onClick={open}
+                    >
+                      <Undo2 size={14} />
+                    </Button>
                   ))}
-                </ol>
+                />
                 <details>
                   <summary>Task details</summary>
                   <div className="task-origin">

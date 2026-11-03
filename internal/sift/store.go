@@ -132,6 +132,19 @@ func rawTx(tx *sql.Tx, kind, id string) []byte {
 	_ = tx.QueryRow("SELECT data FROM objects WHERE kind=? AND id=?", kind, id).Scan(&b)
 	return b
 }
+
+// agentChange is who changed a task's status without the person's review yet:
+// the person's own changes clear it, and an agent's status change sets it.
+func agentChange(actor, previous string, statusChanged bool) string {
+	if actor == "user" {
+		return ""
+	}
+	if statusChanged {
+		return actor
+	}
+	return previous
+}
+
 func putTx(tx *sql.Tx, kind, id string, v any, actor, reason, group string) error {
 	before := rawTx(tx, kind, id)
 	after := encode(v)
@@ -366,6 +379,7 @@ func (s *Store) SaveTask(t Task, expected int, actor, reason, requestID string) 
 			p.Revision++
 			p.UpdatedAt = now()
 			p.Actor = actor
+			p.AgentChange = agentChange(actor, p.AgentChange, true)
 			if actor != "user" && trim(reason) == "" {
 				return t, invalid("Reopening a completed parent requires a reason")
 			}
@@ -424,6 +438,7 @@ func (s *Store) SaveTask(t Task, expected int, actor, reason, requestID string) 
 	}
 	updateCompletion(&t, old, t.UpdatedAt)
 	t.Actor = actor
+	t.AgentChange = agentChange(actor, old.AgentChange, before != nil && old.Status != t.Status)
 	tasks, columns, err := taskGraphTx(tx)
 	if err != nil {
 		return t, err
@@ -565,6 +580,7 @@ func (s *Store) Undo(eventID int64, actor string) error {
 		t.Revision = current.Revision + 1
 		t.UpdatedAt = now()
 		t.Actor = actor
+		t.AgentChange = agentChange(actor, t.AgentChange, t.Status != current.Status)
 		tasks[t.ID] = t
 		changed[t.ID] = true
 	}
@@ -579,6 +595,7 @@ func (s *Store) Undo(eventID int64, actor string) error {
 			p.Revision++
 			p.UpdatedAt = now()
 			p.Actor = actor
+			p.AgentChange = agentChange(actor, p.AgentChange, true)
 			tasks[p.ID] = p
 			changed[p.ID] = true
 		}
@@ -640,6 +657,7 @@ func (s *Store) Merge(source, target string, sourceRev, targetRev int, actor, re
 		return invalid("Cannot merge a parent into a subtask")
 	}
 	group := newID("merge_")
+	survivorStatus := b.Status
 	for _, c := range children {
 		c.ParentID = b.ID
 		c.Revision++
@@ -671,6 +689,7 @@ func (s *Store) Merge(source, target string, sourceRev, targetRev int, actor, re
 	b.Revision++
 	b.UpdatedAt = now()
 	b.Actor = actor
+	b.AgentChange = agentChange(actor, b.AgentChange, b.Status != survivorStatus)
 	a.MergedInto = b.ID
 	a.Revision++
 	a.UpdatedAt = now()

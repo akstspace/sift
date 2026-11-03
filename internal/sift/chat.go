@@ -117,7 +117,8 @@ func (c *Chat) guide() string {
 
 Use the Sift CLI as %q --data %q (written below as sift). Read sift help and sift schema when unsure. Pass --actor chat on every change, and use expected revisions on updates.
 Run exactly one sift command per bash call, with no pipes, redirects, or chained commands. Sift shows the person each sift command's result as a card, so summarize what changed in a sentence instead of repeating the JSON.
-Before adding a task, check sift tasks duplicates --title TITLE. Ask before merging, deleting, or changing work the person didn't ask about. A duplicate suggestion is never permission to merge.
+Before adding a task, check sift tasks duplicates --title TITLE. Ask before merging or deleting; a duplicate suggestion is never permission to merge.
+Keep task status current: when what you find shows a task's state changed (finished, started, or waiting on someone), move it to the matching column yourself with --status COLUMN and a --reason that cites the evidence, instead of only commenting or asking. Check sift columns list for the person's columns. Comment instead when the evidence is partial or ambiguous, and don't reverse a status the person set after the evidence you're relying on. Ask before other changes the person didn't ask about.
 Read task activity and comments before acting on a task: sift tasks get ID and sift tasks comments ID. Choose icons for the task's topic, not where it was found; brand icons only for work about that service.
 A message may begin with a <sift-context> block describing what the person is looking at in Sift, such as the page and an open task. Use it to resolve "this task" or "today", and never mention the block.
 You also have the person's normal Pi tools and command-line tools; use them when asked to gather context from email, chat, or files. Sift does not sandbox your tools. Do not read Sift's private credential files.`, exe, c.dir)

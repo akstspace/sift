@@ -129,11 +129,12 @@ startup configuration when using a manually unpacked build. These actions do not
 edit shell profiles or unrelated agent configurations. The download installer
 already sets up the CLI, PATH, and login startup unless opted out.
 
-**Ask Pi** (Cmd/Ctrl+J) opens a chat with your local Pi. Changes it makes in
-Sift appear as cards you can open; other tools keep Pi's usual view, and Run
-history shows scheduled jobs the same way. The chat keeps one conversation;
-`/new` starts over without the earlier context. See
-[operations](docs/OPERATIONS.md#chat-with-pi).
+**Ask Sift** (Cmd/Ctrl+J) opens a chat. Sift uses your local Pi to read and
+change your tasks and to use your usual tools. Changes it makes in Sift appear
+as cards you can open; other tools keep Pi's usual view, and Run history shows
+scheduled jobs the same way. The chat keeps one conversation; `/new` starts over
+without the earlier context. See
+[operations](docs/OPERATIONS.md#ask-sift-chat).
 
 Each scheduled Pi job has its own exact persistent session, discovered models
 and thinking levels, IANA timezone, and one or more daily/weekday/interval/cron

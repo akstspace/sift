@@ -119,6 +119,33 @@ scheduled-job guidance, and shipped skill document this workflow. Comments are
 context, not permission for unrelated actions; agent attribution cannot claim
 to be `user`.
 
+Activity lists a task's history newest first. Each entry names who acted: *You*,
+*Sift* for the chat, a scheduled job by its name, or the agent's own label.
+Comments sit in a note under a **Comment** pill and render as Markdown, with
+long pasted addresses shortened (the link and its tooltip keep the full
+address). Changes show as short pills such as *Moved to Done*, *High priority*,
+or *Due 14 Nov*, followed by the reason given. Times read as *Just now*,
+*12 min ago*, or *Yesterday, 09:10*; hover for the exact time. On a pointer
+device, a change's Undo appears when you hover its entry.
+
+Scheduled jobs and the chat keep task status current. When what Pi finds shows
+a task is finished, has started, or is waiting on someone, it moves the task to
+the matching column itself with a reason citing the evidence (a link, commit,
+message, or run), instead of only commenting. It comments when the evidence is
+partial, doesn't reverse a status you set after the evidence it relies on, and
+still needs your instruction to merge or delete. Every such change is in
+Activity and can be undone.
+
+A task whose status an agent changed carries a small **AI** badge on its card,
+list row, or subtask row, until you review it. Its details open with one quiet
+line, for example *Morning planning moved this to Done: CI passed at dc2ea74*,
+with **Looks good** to clear the badge and, while it is still the latest change,
+**Undo**. Any change you make to the task yourself also counts as reviewing it.
+Reviewing doesn't create a new task revision, so it never conflicts with an
+open draft, and Activity records it as *Reviewed Morning planning's change*.
+Only you can review; the task's `agentChange` field (read-only to agents) names
+the agent.
+
 Marking a task Done offers an optional **Done reason**: leave it blank to just
 complete the task. This applies to board completion buttons, subtasks, list
 status menus, drag-and-drop into Done, task-detail status changes, and tasks
@@ -171,10 +198,11 @@ changes nothing else. Only the person can delete a job, from its editor. Deletin
 removes the job and its remembered session; its runs stay in Run history, and a
 running job must be cancelled first.
 
-## Chat with Pi
+## Ask Sift (chat)
 
-The **Ask Pi** pill at the bottom of the workspace (or Cmd/Ctrl+J) opens a chat
-with your local Pi. Escape or the chevron closes it; the panel reopens where you
+The **Ask Sift** pill at the bottom of the workspace (or Cmd/Ctrl+J), marked with
+Sift's one-colour logo, opens a chat. Sift uses your local Pi to read and
+change your tasks and to use your usual tools. Escape or the chevron closes it; the panel reopens where you
 left it. Pi starts the first time the panel opens, in your home folder, with
 your usual Pi tools, extensions, and login, and stops after 15 minutes without a
 reply or question. The next message starts it again in the same conversation.
@@ -187,17 +215,19 @@ reply or question. The next message starts it again in the same conversation.
 - **What Pi sees.** Each message carries the page you are on, the open task or
   run, and the search, unless you switch the view chip off for that message.
   Slash commands never carry it. Pi is told to use the Sift CLI as `--actor chat`,
-  to check for duplicates before adding, and to ask before merging or deleting.
+  to check for duplicates before adding, to ask before merging or deleting, and
+  to move a task's status itself when it finds clear evidence (see Activity).
 - **What you see.** Sift commands appear as cards: the task (opening it on
   click, with its live status, or *In Trash*, *Merged*, *Archived*), what
-  changed, the reason given, and the command and output on demand. Reads stay
+  changed, the reason given, and the command and output on demand. In task
+  Activity, the chat's changes are attributed to *Sift*. Reads stay
   quiet one-line rows. Other tools show as collapsible rows (shell commands,
   reads, edits as diffs, writes), and thinking collapses to *Thought*. Run
   history uses the same view for scheduled jobs.
 - **Steering and stopping.** A message sent while Pi works is queued and read
   after the current step; **Stop** cancels the reply and the queue.
 - **Questions.** When Pi or an extension asks something (choose, confirm, type),
-  the question appears in the conversation; the pill shows *Pi has a question*
+  the question appears in the conversation; the pill shows *Sift has a question*
   while the panel is closed. Extension notes appear as notifications and their
   status lines under the message box.
 - **Model and thinking.** The model menu under the title lists Pi's models and

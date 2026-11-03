@@ -1409,6 +1409,10 @@ body:has(.drag-preview) .task-card { cursor: grabbing; }
 .markdown a > svg {
   display: inline;
 }
+/* A shortened address stays on one line and trims further on narrow screens. */
+.markdown a.bare-link { display: inline-flex; align-items: center; max-width: 100%; vertical-align: bottom; }
+.markdown a.bare-link > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.markdown a.bare-link > svg { flex-shrink: 0; }
 .markdown table {
   display: block;
   overflow: auto;
@@ -1592,56 +1596,62 @@ body:has(.drag-preview) .task-card { cursor: grabbing; }
   font-size: 12px;
   min-height: 32px;
 }
-.history-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
 .comment-composer { display: grid; gap: 12px; margin-bottom: 20px; }
+/* Task activity: who did what, newest first. Comments are notes in a soft
+   bubble under a Comment pill; changes are short pills. No rules or boxes. */
+.activity { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.activity-entry { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; min-width: 0; }
+.activity-avatar {
+  display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+  font-size: 11px; font-weight: 600; background: var(--tint-strong); color: var(--muted);
+}
+.activity-avatar.you { background: var(--sea); color: var(--slate); }
+.activity-avatar.sift { color: var(--ink); }
+.activity-avatar.job { background: var(--blue-soft); color: var(--blue); }
+.activity-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.activity-head { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 8px; min-height: 24px; font-size: 13px; }
+.activity-actor { font-weight: 600; color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-summary { color: var(--muted); }
+.activity-head time { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.activity-pills { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 5px; }
+.activity-pill {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px;
+  font-size: 11.5px; line-height: 1.4; white-space: nowrap; background: var(--tint-strong); color: var(--ink);
+}
+.activity-pill.comment { background: var(--blue-soft); color: var(--blue); font-weight: 500; }
+.activity-pill.more { background: none; padding-inline: 2px; color: var(--muted); }
+.activity-comment { padding: 9px 12px; border-radius: 4px 12px 12px 12px; background: var(--tint); color: var(--ink); min-width: 0; }
+.activity-comment .markdown { font-size: 13.5px; line-height: 1.6; }
+.activity-comment .markdown :is(p, ul, ol, pre, blockquote) { margin: 6px 0; }
+.activity-comment .markdown > :first-child { margin-top: 0; }
+.activity-comment .markdown > :last-child { margin-bottom: 0; }
+.activity-reason { margin: 0; font-size: 13px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+/* The AI mark: a task whose status an agent changed, until the person reviews it. */
+.agent-badge {
+  display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border-radius: 999px; flex-shrink: 0;
+  font-size: 9.5px; font-weight: 650; letter-spacing: 0.06em; line-height: 1; background: var(--blue-soft); color: var(--blue);
+}
+.nested-tasks .agent-badge { margin-top: 4px; }
+.agent-review { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 6px 10px; margin: 0 0 16px; padding: 7px 8px 7px 10px; border-radius: 10px; background: var(--tint); font-size: 13px; }
+.agent-review > p { flex: 1; min-width: 12rem; margin: 0; color: var(--muted); line-height: 1.45; }
+.agent-review strong { color: var(--ink); font-weight: 600; }
+.agent-review-reason { color: var(--ink); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.agent-review > .agent-badge { margin-top: 2px; }
+.agent-review-actions { display: flex; gap: 2px; margin: -3px 0 -3px auto; align-self: center; }
+.agent-review-actions [data-slot="button"] { height: 28px; padding-inline: 8px; font-size: 12.5px; }
+.agent-review-error { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--danger); }
+.activity-undo { flex-shrink: 0; transition: opacity 140ms; }
+.activity-undo [data-slot="button"] { width: 26px; height: 26px; color: var(--muted); }
+/* Undo waits until the pointer is on its entry; touch and keyboard always see it. */
+@media (hover: hover) {
+  .activity-undo { opacity: 0; }
+  .activity-entry:hover .activity-undo, .activity-undo:focus-within, .activity-undo:has([data-state="open"]) { opacity: 1; }
+}
 .comment-composer > button { justify-self: end; }
 .comment-composer textarea { field-sizing: fixed; min-height: 5lh; max-height: 30dvh; overflow: auto; }
-.history-list p { white-space: pre-wrap; }
-.activity-kind { font-weight: 600; color: var(--ink); }
 .done-reason-dialog > form { display: grid; gap: 20px; min-width: 0; }
 .done-reason-dialog [data-slot="dialog-description"] { overflow-wrap: anywhere; }
 .done-reason-dialog textarea { field-sizing: fixed; min-height: 5lh; max-height: 35dvh; overflow: auto; }
-.history-list > li {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 13px 0;
-  border-bottom: 1px solid var(--line);
-}
-.history-node {
-  width: 5px;
-  height: 5px;
-  background: var(--line);
-  border-radius: 50%;
-  margin: 6px 2px;
-  flex-shrink: 0;
-}
-.history-list > li > div {
-  flex: 1;
-  min-width: 0;
-}
-.history-list strong {
-  font-size: 12px;
-  font-weight: 600;
-}
-.history-list p {
-  font-size: 13px;
-  margin: 3px 0;
-  color: var(--muted);
-  overflow-wrap: anywhere;
-}
-.history-list time {
-  font-size: 12px;
-  color: var(--muted);
-}
-.history-list [data-slot="button"] {
-  width: 25px;
-  height: 25px;
-}
 .task-origin {
   display: flex;
   flex-direction: column;
@@ -3220,10 +3230,10 @@ button.task-chip:active { transform: scale(0.995); }
 }
 .chat-dock.raised { padding-bottom: 51px; }
 .chat-dock > * { pointer-events: auto; }
-.pi-glyph {
-  display: inline-grid; place-items: center; flex-shrink: 0; border-radius: 50%; background: var(--coral); color: var(--slate);
-  font-weight: 500; font-style: italic; line-height: 1; font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; padding-bottom: 0.08em;
-}
+/* Sift's one-colour mark: in the pill it takes the pill's text colour; in the panel header it sits on a soft tile. */
+.sift-mono { display: block; flex-shrink: 0; }
+.chat-pill-mark { display: grid; place-items: center; width: 22px; height: 22px; margin-left: 2px; flex-shrink: 0; }
+.chat-header-mark { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--tint-strong); color: var(--ink); flex-shrink: 0; }
 .transcript .markdown table { font-size: 13px; border-radius: 10px; border: 1px solid var(--line); border-collapse: separate; border-spacing: 0; width: fit-content; max-width: 100%; }
 .transcript .markdown th, .transcript .markdown td { border: 0; border-bottom: 1px solid var(--line); padding: 6px 12px; text-align: left; }
 .transcript .markdown tr:last-child td { border-bottom: 0; }

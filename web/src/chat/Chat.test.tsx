@@ -79,13 +79,13 @@ function dock(props: Partial<Parameters<typeof ChatDock>[0]> = {}) {
 const pill = () => screen.getByRole("button", { name: /Open chat/ });
 async function openChat() {
   fireEvent.click(pill());
-  const panel = await screen.findByRole("complementary", { name: "Chat with Pi" });
-  await within(panel).findByRole("textbox", { name: "Message Pi" });
+  const panel = await screen.findByRole("complementary", { name: "Ask Sift" });
+  await within(panel).findByRole("textbox", { name: "Message Sift" });
   // The composer takes focus a frame after it mounts; let that settle first.
   await act(async () => { await new Promise<void>(r => requestAnimationFrame(() => r())); });
   return panel;
 }
-const composer = () => screen.getByRole("textbox", { name: "Message Pi" }) as HTMLTextAreaElement;
+const composer = () => screen.getByRole("textbox", { name: "Message Sift" }) as HTMLTextAreaElement;
 async function type(text: string) {
   fireEvent.change(composer(), { target: { value: text } });
   await act(async () => {});
@@ -99,7 +99,8 @@ describe("chat pill", () => {
   it("opens the panel, remembers it, and closes from the header", async () => {
     await act(async () => { await preloadChat(); });
     dock();
-    expect(pill().getAttribute("aria-label")).toBe("Ask Pi. Open chat (⌘J)");
+    expect(pill().getAttribute("aria-label")).toBe("Ask Sift. Open chat (⌘J)");
+    expect(pill().querySelector("svg.sift-mono")).not.toBeNull(); expect(pill().textContent).not.toContain("π");
     fireEvent.pointerEnter(pill()); fireEvent.focus(pill());
     const panel = await openChat();
     expect(localStorage.getItem("sift.chat")).toBe("open");
@@ -121,14 +122,14 @@ describe("chat pill", () => {
     expect(screen.queryByRole("complementary")).toBeNull();
     modal.remove();
     fireEvent.keyDown(window, { key: "J", ctrlKey: true });
-    expect(await screen.findByRole("complementary", { name: "Chat with Pi" })).toBeDefined();
+    expect(await screen.findByRole("complementary", { name: "Ask Sift" })).toBeDefined();
     fireEvent.keyDown(window, { key: "j", metaKey: true });
     await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
   });
   it("closes on Escape from inside the panel, but not over a menu or from elsewhere", async () => {
     localStorage.setItem("sift.chat", "open");
     dock();
-    const panel = await screen.findByRole("complementary", { name: "Chat with Pi" });
+    const panel = await screen.findByRole("complementary", { name: "Ask Sift" });
     await within(panel).findByText("What can I sift for you?");
     // Any focus the composer would take happens a frame after it mounts.
     await act(async () => { await new Promise<void>(r => requestAnimationFrame(() => r())); });
@@ -153,12 +154,12 @@ describe("chat pill", () => {
     preference.reduced = true;
     peek = { running: true };
     dock({ raised: true });
-    await waitFor(() => expect(pill().getAttribute("aria-label")).toBe("Pi is working…. Open chat (⌘J)"));
+    await waitFor(() => expect(pill().getAttribute("aria-label")).toBe("Sift is working…. Open chat (⌘J)"));
     expect(document.querySelector(".chat-dock.raised")).not.toBeNull();
     await emit({ type: "agent_settled" });
-    expect(pill().getAttribute("aria-label")).toBe("New reply from Pi. Open chat (⌘J)");
+    expect(pill().getAttribute("aria-label")).toBe("New reply from Sift. Open chat (⌘J)");
     await emit({ type: "extension_ui_request", id: "d1", method: "confirm", title: "Allow?" });
-    expect(pill().getAttribute("aria-label")).toBe("Pi has a question. Open chat (⌘J)");
+    expect(pill().getAttribute("aria-label")).toBe("Sift has a question. Open chat (⌘J)");
     state = chatInfo({ running: true, dialogs: [{ id: "d1", method: "confirm", title: "Allow?" }] });
     // A resync before the panel ever opened only re-checks whether Pi is busy.
     peek = { running: true };
@@ -170,14 +171,14 @@ describe("chat pill", () => {
   it("shows a question that was already waiting when the page loaded", async () => {
     peek = { dialogs: [{ id: "d0", method: "select", title: "Pick", options: ["A"] }] };
     dock();
-    await waitFor(() => expect(pill().getAttribute("aria-label")).toMatch(/^Pi has a question/));
+    await waitFor(() => expect(pill().getAttribute("aria-label")).toMatch(/^Sift has a question/));
   });
   it("survives a failed peek and storage that can't be used", async () => {
     mock.mockImplementation(async path => { if (path === "/chat?peek=1") throw new Error("offline"); return state; });
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("denied"); });
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("denied"); });
     dock();
-    expect(await screen.findByRole("button", { name: /Ask Pi/ })).toBeDefined();
+    expect(await screen.findByRole("button", { name: /Ask Sift/ })).toBeDefined();
     await openChat();
   });
 });
@@ -196,8 +197,8 @@ describe("chat conversation", () => {
     expect(composer().value).toBe("");
     expect(calls("/chat/prompt")[0]).toEqual({ message: "Plan my day", images: [], context: "Page: Today." });
     await act(async () => reply.resolve({ disposition: "started" }));
-    expect(within(panel).getByRole("status", { name: "Pi is replying" })).toBeDefined();
-    expect(composer().placeholder).toBe("Add to what Pi is doing…");
+    expect(within(panel).getByRole("status", { name: "Sift is replying" })).toBeDefined();
+    expect(composer().placeholder).toBe("Add to what Sift is doing…");
     await emit(
       { type: "agent_start" },
       { type: "message_start", message: { role: "user", content: "Plan my day", siftContext: "Page: Today.", timestamp: 2 } },
@@ -207,7 +208,7 @@ describe("chat conversation", () => {
     );
     expect(panel.querySelector(".user-message.pending")).toBeNull();
     expect(panel.querySelector(".user-context")?.textContent).toBe("Sift shared: Today");
-    await waitFor(() => expect(within(panel).queryByRole("status", { name: "Pi is replying" })).toBeNull());
+    await waitFor(() => expect(within(panel).queryByRole("status", { name: "Sift is replying" })).toBeNull());
     expect(panel.querySelector(".agent-markdown.streaming")?.textContent).toBe("Start with");
     await emit(
       { type: "message_update", assistantMessageEvent: { type: "toolcall_start", contentIndex: 1 } },
@@ -222,7 +223,7 @@ describe("chat conversation", () => {
     expect(onOpenTask).toHaveBeenCalledWith(snap.tasks[0]);
     // Replies while open aren't "unread".
     fireEvent.click(within(panel).getByRole("button", { name: "Close chat (Esc)" }));
-    await waitFor(() => expect(pill().getAttribute("aria-label")).toMatch(/^Ask Pi/));
+    await waitFor(() => expect(pill().getAttribute("aria-label")).toMatch(/^Ask Sift/));
   });
   it("loads earlier messages and replays what arrived while loading", async () => {
     state = chatInfo({ messages: [{ role: "user", content: "Earlier", timestamp: 1 }], notice: "Pi couldn't open the previous conversation, so this is a new one." });
@@ -314,9 +315,9 @@ describe("chat conversation", () => {
     dock();
     const panel = await openChat();
     expect(within(panel).getByText("Also the dentist")).toBeDefined();
-    expect(within(panel).getByText("Queued — Pi reads it after the current step")).toBeDefined();
+    expect(within(panel).getByText("Queued — Sift reads it after the current step")).toBeDefined();
     await type("And the car");
-    fireEvent.click(within(panel).getByRole("button", { name: "Send — Pi reads it after the current step" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Send — Sift reads it after the current step" }));
     await waitFor(() => expect(calls("/chat/prompt")).toHaveLength(1));
     // No optimistic copy: Pi's queue shows it.
     expect(panel.querySelectorAll(".user-message.pending")).toHaveLength(1);
@@ -403,9 +404,9 @@ describe("chat questions and extension UI", () => {
       { type: "extension_ui_request", id: "s", method: "select", title: "Which list?", options: ["Home", "Work"] },
     );
     const card = within(panel).getByRole("region", { name: "Which list?" });
-    expect(within(card).getByText("Pi is waiting for you")).toBeDefined();
+    expect(within(card).getByText("Sift is waiting for you")).toBeDefined();
     expect(card.querySelector(".question-timer")).not.toBeNull();
-    expect(within(panel).queryByRole("status", { name: "Pi is replying" })).toBeNull();
+    expect(within(panel).queryByRole("status", { name: "Sift is replying" })).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(within(card).getByRole("button", { name: "Home" })));
     fireEvent.click(within(card).getByRole("button", { name: "Work" }));
     await waitFor(() => expect(calls("/chat/dialogs/s")).toEqual([{ value: "Work" }]));
@@ -417,7 +418,7 @@ describe("chat questions and extension UI", () => {
     expect(within(q).getByText("This can't be undone.")).toBeDefined();
     fireEvent.click(within(q).getByRole("button", { name: "No" }));
     await emit({ type: "extension_ui_request", id: "c2", method: "confirm" });
-    q = within(panel).getByRole("region", { name: "Pi needs an answer" });
+    q = within(panel).getByRole("region", { name: "Sift needs an answer" });
     fireEvent.click(within(q).getByRole("button", { name: "Yes" }));
     await emit({ type: "extension_ui_request", id: "c3", method: "confirm", title: "Skip?" });
     fireEvent.click(within(panel).getByRole("button", { name: "Dismiss" }));
@@ -665,7 +666,7 @@ describe("chat composer", () => {
     mock.mockImplementation(async path => path === "/chat" ? loading.promise : { disposition: "started" });
     dock();
     fireEvent.click(pill());
-    const box = await screen.findByRole("textbox", { name: "Message Pi" });
+    const box = await screen.findByRole("textbox", { name: "Message Sift" });
     expect((box as HTMLTextAreaElement).disabled).toBe(false);
     await waitFor(() => expect(document.activeElement).toBe(box));
     await type("Early");
