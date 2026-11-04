@@ -210,6 +210,17 @@ jobs update ID --revision N --schedule SPEC [--schedule SPEC]  Change only sched
 jobs run ID --wait                 Start once and follow this run to completion
 runs list|get ID|cancel ID         Live run history and control
 runs watch ID                      Follow run status and new activity (read-only)
+activity list [--from DATE] [--to DATE] [--task ID]
+                                  What the person did: work sessions (JSON);
+                                  dates are YYYY-MM-DD or times, default today
+activity add --start TIME --end TIME --title TEXT [--summary TEXT]
+          [--category KIND] [--source NAME] [--link URL] [--task ID] [--source-key KEY]
+activity update ID --revision N [same options]   Change one session
+activity delete ID --revision N   Remove a session you recorded
+activity check                    Check for new activity now
+  TIME is RFC 3339 such as 2026-11-04T09:30:00+05:30. KIND is code, review,
+  meeting, message, writing, research, admin, or other. A repeated source key
+  updates the existing session instead of adding another.
 models list                       Discover configured models using local Pi RPC
 schema                            JSON schema and task rules
 history TASK_ID                   Task activity, including comments and attribution
@@ -413,6 +424,12 @@ No silent daemon autostart, automatic duplicate merging, or model fallback.`)
 			path += "/" + url.PathEscape(get(2)) + "/cancel"
 			method = "POST"
 			body = map[string]any{}
+		}
+	case "activity":
+		var e error
+		method, path, body, e = c.activityRequest(ctx, sub, get(2), a)
+		if e != nil {
+			return e
 		}
 	case "history":
 		path = "/api/history?entity=" + url.QueryEscape(get(1))
@@ -625,4 +642,54 @@ func parseWeekdays(list string) ([]int, bool) {
 		}
 	}
 	return days, true
+}
+
+// activityRequest builds the request for sift activity SUBCOMMAND.
+func (c *localClient) activityRequest(ctx context.Context, sub, id string, a arguments) (method, path string, body any, err error) {
+	switch sub {
+	case "list", "":
+		q := url.Values{}
+		for _, k := range []string{"from", "to", "task"} {
+			if v := a.Flags[k]; v != "" {
+				q.Set(k, v)
+			}
+		}
+		return "GET", "/api/activity?" + q.Encode(), nil, nil
+	case "check":
+		return "POST", "/api/activity/check", map[string]string{"from": a.Flags["from"], "to": a.Flags["to"]}, nil
+	case "add", "update", "delete":
+	default:
+		return "", "", nil, invalid("Use sift activity list, add, update, delete, or check")
+	}
+	if sub != "add" && id == "" {
+		return "", "", nil, invalid("An activity ID is required: sift activity %s ID --revision N", sub)
+	}
+	revision := 0
+	if sub != "add" {
+		if revision, err = strconv.Atoi(a.Flags["revision"]); err != nil || revision < 1 {
+			return "", "", nil, invalid("--revision N is required; read the activity with sift activity list")
+		}
+	}
+	if sub == "delete" {
+		return "DELETE", "/api/activity/" + url.PathEscape(id) + "?revision=" + strconv.Itoa(revision), nil, nil
+	}
+	var e ActivityEntry
+	if sub == "update" {
+		b, err := c.request(ctx, "GET", "/api/activity/"+url.PathEscape(id), nil)
+		if err != nil {
+			return "", "", nil, err
+		}
+		_ = json.Unmarshal(b, &e)
+	}
+	fields := map[string]*string{"start": &e.Start, "end": &e.End, "title": &e.Title, "summary": &e.Summary, "category": &e.Category, "source": &e.Source, "link": &e.Link, "task": &e.TaskID, "source-key": &e.SourceKey}
+	for k, p := range fields {
+		if v, ok := a.Flags[k]; ok {
+			*p = v
+		}
+	}
+	body = map[string]any{"entry": e, "expectedRevision": revision}
+	if sub == "add" {
+		return "POST", "/api/activity", body, nil
+	}
+	return "PUT", "/api/activity/" + url.PathEscape(id), body, nil
 }

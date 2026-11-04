@@ -19,7 +19,10 @@ import {
   IconCircleX as XCircle,
 } from "@tabler/icons-react";
 import { api } from "../api";
-import type { PiInfo, Settings } from "../types";
+import type { ActivityPage, PiInfo, Settings } from "../types";
+import { Switch } from "./ui/switch";
+import { TrackerFields, draftFrom, saveTracker, type TrackerDraft } from "../activity/TrackerForm";
+import { settle } from "../motion";
 import { Button, CopyButton, Field, Mark } from "./shared";
 import { InstallApp } from "./InstallApp";
 
@@ -47,7 +50,42 @@ export function Onboarding({
     [probe, setProbe] = useState(false),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(""),
-    [installed, setInstalled] = useState<string[]>([]);
+    [installed, setInstalled] = useState<string[]>([]),
+    // Activity tracking is optional and off until the person turns it on.
+    [track, setTrack] = useState(false),
+    [trackerDraft, setTrackerDraft] = useState<TrackerDraft | null>(null),
+    [defaults, setDefaults] = useState({ prompt: "", times: [] as string[] }),
+    [tracking, setTracking] = useState(false);
+  const LAST = 4;
+  const turnOnTracking = async (on: boolean) => {
+    setTrack(on);
+    if (!on || trackerDraft) return;
+    try {
+      const page = await api<ActivityPage>("/activity");
+      setDefaults({ prompt: page.defaultPrompt, times: page.defaultTimes });
+      if (page.tracker) setTracking(true);
+      setTrackerDraft(draftFrom(page.tracker, page.defaultPrompt, page.defaultTimes));
+    } catch (e) {
+      setError((e as Error).message);
+      setTrack(false);
+    }
+  };
+  const next = async () => {
+    if (step === 3 && track && trackerDraft && !tracking) {
+      setBusy("tracking");
+      setError("");
+      try {
+        await saveTracker({ ...trackerDraft, enabled: true, backfill: true }, null, timezone);
+        setTracking(true);
+      } catch (e) {
+        setError((e as Error).message);
+        return;
+      } finally {
+        setBusy("");
+      }
+    }
+    setStep(step + 1);
+  };
   const check = async () => {
     setProbe(true);
     setError("");
@@ -93,6 +131,7 @@ export function Onboarding({
     "A little space for your next move.",
     "Local by design. Connected on your terms.",
     "Give your agents a way in.",
+    "Know where your day went.",
     "Make this space yours.",
   ];
   return (
@@ -106,7 +145,7 @@ export function Onboarding({
       </header>
       <main className="onboard-main">
         <div className="onboard-art" aria-hidden="true">
-          <motion.div className="art-anchor" animate={{ y: reduced ? 0 : step === 3 ? 8 : 0 }}>
+          <motion.div className="art-anchor" animate={{ y: reduced ? 0 : step === LAST ? 8 : 0 }}>
             <Mark animate />
           </motion.div>
           <div className="observation-lines">
@@ -120,7 +159,7 @@ export function Onboarding({
                   y: reduced ? 0 : 20,
                   rotate: reduced ? 0 : (i - 1) * 6,
                 }}
-                animate={{ opacity: 1, x: reduced ? 0 : step === 3 ? (1 - i) * 5 : 0, y: 0, rotate: 0 }}
+                animate={{ opacity: 1, x: reduced ? 0 : step === LAST ? (1 - i) * 5 : 0, y: 0, rotate: 0 }}
                 transition={{
                   delay: reduced ? 0 : 0.15 + i * 0.12,
                   duration: reduced ? 0.1 : 0.65,
@@ -129,10 +168,10 @@ export function Onboarding({
               >
                 <span
                   className={
-                    "observation-check " + (step === 3 ? "checked" : "")
+                    "observation-check " + (step === LAST ? "checked" : "")
                   }
                 >
-                  {step === 3 ? <Check size={13} /> : <Circle size={13} />}
+                  {step === LAST ? <Check size={13} /> : <Circle size={13} />}
                 </span>
                 <motion.span
                   className="observation-ink"
@@ -146,7 +185,7 @@ export function Onboarding({
         </div>
         <div className="onboard-content">
           <nav className="step-dots" aria-label="Setup progress">
-            {["Welcome", "Connections", "Agent access", "Your workspace"].map(
+            {["Welcome", "Connections", "Agent access", "Your day", "Your workspace"].map(
               (name, i) => (
                 <Action
                   key={name}
@@ -318,6 +357,28 @@ export function Onboarding({
                     <CopyButton text="sift help" />
                   </div>
                 </>
+              ) : step === 3 ? (
+                <>
+                  <p className="onboard-lede">
+                    Sift can use Pi to write down what you work on, a few times
+                    a day, from the tools you already use. You choose what it
+                    looks at, and you can change it any time on My activity.
+                  </p>
+                  <label className="tracker-enabled onboard-track">
+                    <span>
+                      <strong>Track my activity</strong>
+                      <small>{tracking ? "Tracking is on. Change it on My activity." : "Optional. Off until you turn it on."}</small>
+                    </span>
+                    <Switch checked={track || tracking} disabled={tracking || !!busy} onCheckedChange={v => { void turnOnTracking(v); }} aria-label="Track my activity" />
+                  </label>
+                  <AnimatePresence initial={false}>
+                    {track && trackerDraft && !tracking && (
+                      <motion.div key="tracker" className="onboard-tracker" initial={{ opacity: 0, height: 0, overflow: "hidden" }} animate={{ opacity: 1, height: "auto", transitionEnd: { overflow: "visible" } }} exit={{ opacity: 0, height: 0, overflow: "hidden" }} transition={{ duration: reduced ? 0.1 : 0.32, ease: settle }}>
+                        <TrackerFields compact draft={trackerDraft} onChange={setTrackerDraft} defaultPrompt={defaults.prompt} timezone={timezone} disabled={!!busy} />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </>
               ) : (
                 <>
                   <p className="onboard-lede">
@@ -358,7 +419,7 @@ export function Onboarding({
                   </Button>
                 )}
                 <div className="push" />
-                {step === 3 ? (
+                {step === LAST ? (
                   <>
                     <Button
                       variant="outline"
@@ -373,12 +434,14 @@ export function Onboarding({
                     </Button>
                   </>
                 ) : (
-                  <Button onClick={() => setStep(step + 1)}>
+                  <Button onClick={() => { void next(); }} disabled={!!busy}>
                     {step === 0
                       ? "Find your focus"
                       : step === 1 && !pi
                         ? "Continue for now"
-                        : "Continue"}
+                        : step === 3 && track && !tracking
+                          ? busy === "tracking" ? "Turning on…" : "Turn on and continue"
+                          : "Continue"}
                     <ArrowRight size={16} />
                   </Button>
                 )}

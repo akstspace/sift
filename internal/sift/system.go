@@ -392,7 +392,7 @@ func (s *Service) backupContext(ctx context.Context) (string, error) {
 }
 func (s *Store) SnapshotUnlocked() map[string]any {
 	out := map[string]any{"cursor": s.Latest(), "version": Version}
-	for _, k := range []string{"task", "column", "project", "tag", "job", "run", "attachment", "notification", "settings"} {
+	for _, k := range backupKinds {
 		out[k+"s"] = s.ListRaw(k)
 	}
 	return out

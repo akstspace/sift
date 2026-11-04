@@ -59,6 +59,7 @@ import { useIsMobile } from "../hooks/use-mobile";
 import { TaskTitle, type TaskTitleHandle } from "./TaskTitle";
 import { DoneReasonDialog } from "./DoneReasonDialog";
 import { Activity, AgentReview } from "./Activity";
+import { TaskTime } from "../activity/TaskTime";
 
 export function TaskDetail({
   initial,
@@ -69,6 +70,7 @@ export function TaskDetail({
   onOpen,
   onAddChild,
   refresh,
+  onOpenActivity,
 }: {
   initial: Task;
   snapshot: Snapshot;
@@ -78,6 +80,8 @@ export function TaskDetail({
   onOpen: (t: Task) => void;
   onAddChild: (parent: string) => void;
   refresh: () => Promise<void>;
+  /** Opens My activity on a day. */
+  onOpenActivity?: (day: string) => void;
 }) {
   const reduced = !!useReducedMotion();
   const mobile = useIsMobile();
@@ -715,6 +719,7 @@ export function TaskDetail({
                 ))}
               </div>
             )}
+            {task.id && <TaskTime taskId={task.id} cursor={snapshot.cursor} tz={snapshot.settings.timezone} onOpenDay={onOpenActivity} />}
             {task.id && (
               <>
                 <div className="section-heading">

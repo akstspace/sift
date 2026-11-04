@@ -25,7 +25,10 @@ const archiveLimit = 800 << 20
 // maxSessionFile bounds each Pi session file a backup carries or restores.
 const maxSessionFile = 64 << 20
 
-var backupKinds = []string{"task", "column", "project", "tag", "job", "run", "attachment", "notification", "settings"}
+var backupKinds = []string{"task", "column", "project", "tag", "job", "run", "attachment", "notification", "settings", activityKind, activityCheckKind}
+
+// newerBackupKinds were added after the first backups, which restore without them.
+var newerBackupKinds = map[string]bool{activityKind: true, activityCheckKind: true}
 
 type requestRecord struct {
 	ID, Hash string
@@ -364,7 +367,11 @@ func (s *Service) restore(ctx context.Context, b []byte) error {
 	data = map[string][]json.RawMessage{}
 	for _, k := range backupKinds {
 		var records []json.RawMessage
-		if json.Unmarshal(workspace[k+"s"], &records) != nil {
+		raw, present := workspace[k+"s"]
+		if !present && newerBackupKinds[k] {
+			continue
+		}
+		if json.Unmarshal(raw, &records) != nil {
 			return invalid("Invalid %s records", k)
 		}
 		data[k] = records

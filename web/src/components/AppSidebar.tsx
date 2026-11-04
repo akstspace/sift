@@ -8,6 +8,7 @@ import {
   IconSettings as Settings2,
   IconSunHigh as SunMedium,
   IconTerminal2 as Terminal,
+  IconTimeline as Timeline,
   IconTrash as Trash2,
   IconX as X,
 } from "@tabler/icons-react";
@@ -33,6 +34,7 @@ import {
 export const navigation = [
   { id: "today", label: "Today", icon: SunMedium },
   { id: "backlog", label: "All tasks", icon: ListCheck },
+  { id: "activity", label: "My activity", icon: Timeline },
   { id: "organization", label: "Projects", icon: Folder },
   { id: "jobs", label: "Agents", icon: Terminal },
   { id: "runs", label: "Run history", icon: History },

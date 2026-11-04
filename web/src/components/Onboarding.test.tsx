@@ -85,3 +85,86 @@ describe("opt-in onboarding", () => {
     await waitFor(() => expect(props.onFinish).toHaveBeenCalledTimes(2)); expect(props.onCreateJob).toHaveBeenCalledTimes(job ? 1 : 0);
   });
 });
+
+describe("activity tracking during setup", () => {
+  const defaults = { entries: [], checks: [], gaps: [], tracker: null, defaultPrompt: "Find out what I worked on.", defaultTimes: ["12:30", "17:30", "22:00"], categories: [], lookbackDays: 7 };
+  const openStep = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(screen.getByRole("button", { name: "Your day" }));
+    expect(await screen.findByText("Know where your day went.")).toBeDefined();
+    // The step focuses its heading once it has arrived; type after that.
+    await waitFor(() => expect(document.activeElement?.textContent).toBe("Know where your day went."), { timeout: 3000 });
+  };
+  it("stays off unless turned on, and Continue moves on", async () => {
+    const { user } = mount();
+    await openStep(user);
+    expect(screen.getByText("Optional. Off until you turn it on.")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByText("Make this space yours.")).toBeDefined();
+    expect(mock).not.toHaveBeenCalled();
+  });
+  it("turns tracking on with the edited prompt, filling in today", async () => {
+    mock.mockImplementation(async (path: string) => path === "/activity" ? defaults : {});
+    const { user } = mount();
+    await openStep(user);
+    await user.click(screen.getByRole("switch", { name: "Track my activity" }));
+    const prompt = await screen.findByRole("textbox", { name: "What Sift looks at" });
+    expect((prompt as HTMLTextAreaElement).value).toBe("Find out what I worked on.");
+    expect(screen.queryByRole("button", { name: /Uses Pi’s default model/ })).toBeNull();
+    await user.type(prompt, " Skip email.");
+    await user.click(screen.getByRole("button", { name: "Turn on and continue" }));
+    expect(await screen.findByText("Make this space yours.")).toBeDefined();
+    expect(mock).toHaveBeenCalledWith("/activity/tracker", "PUT", expect.objectContaining({
+      prompt: "Find out what I worked on. Skip email.", enabled: true, backfill: true, revision: 0,
+      schedules: ["12:30", "17:30", "22:00"].map(schedule => ({ type: "daily", schedule })),
+    }));
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    expect(await screen.findByText("Tracking is on. Change it on My activity.")).toBeDefined();
+    expect((screen.getByRole("switch", { name: "Track my activity" }) as HTMLButtonElement).disabled).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByText("Make this space yours.")).toBeDefined();
+    expect(mock.mock.calls.filter(([path]) => path === "/activity/tracker")).toHaveLength(1);
+  });
+  it("can turn tracking back off before continuing", async () => {
+    preference.reduced = true;
+    mock.mockImplementation(async (path: string) => path === "/activity" ? defaults : {});
+    const { user } = mount();
+    await openStep(user);
+    const toggle = screen.getByRole("switch", { name: "Track my activity" });
+    await user.click(toggle);
+    await screen.findByRole("textbox", { name: "What Sift looks at" });
+    await user.click(toggle);
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "What Sift looks at" })).toBeNull());
+    await user.click(toggle);
+    expect(await screen.findByRole("textbox", { name: "What Sift looks at" })).toBeDefined();
+    expect(mock.mock.calls.filter(([path]) => path === "/activity")).toHaveLength(1);
+    await user.click(toggle);
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByText("Make this space yours.")).toBeDefined();
+  });
+  it("shows tracking that's already on", async () => {
+    mock.mockImplementation(async (path: string) => path === "/activity" ? { ...defaults, tracker: { id: "job_activity", kind: "activity", prompt: "Mine", schedules: [], provider: "", model: "", thinking: "", enabled: true } } : {});
+    const { user } = mount();
+    await openStep(user);
+    await user.click(screen.getByRole("switch", { name: "Track my activity" }));
+    expect(await screen.findByText("Tracking is on. Change it on My activity.")).toBeDefined();
+    expect(screen.queryByRole("textbox", { name: "What Sift looks at" })).toBeNull();
+  });
+  it("explains when tracking can't be read or saved", async () => {
+    mock.mockRejectedValueOnce(new Error("Sift isn't running"));
+    const { user } = mount();
+    await openStep(user);
+    await user.click(screen.getByRole("switch", { name: "Track my activity" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Sift isn't running");
+    expect(screen.getByRole("switch", { name: "Track my activity" }).getAttribute("aria-checked")).toBe("false");
+    mock.mockImplementation(async (path: string) => {
+      if (path === "/activity") return defaults;
+      throw new Error("Activity tracking is already set up");
+    });
+    await user.click(screen.getByRole("switch", { name: "Track my activity" }));
+    await screen.findByRole("textbox", { name: "What Sift looks at" });
+    await user.click(screen.getByRole("button", { name: "Turn on and continue" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Activity tracking is already set up");
+    expect(screen.getByText("Know where your day went.")).toBeDefined();
+  });
+});
+

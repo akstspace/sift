@@ -145,6 +145,12 @@ func validateWorkspace(data map[string][]json.RawMessage) error {
 	if err := validateTaskGraph(tasks, objects["column"]); err != nil {
 		return err
 	}
+	for _, raw := range data[activityKind] {
+		var e ActivityEntry
+		if json.Unmarshal(raw, &e) != nil || trim(e.Title) == "" || e.Revision < 1 || e.End < e.Start {
+			return invalid("Invalid backup activity")
+		}
+	}
 	for _, raw := range data["job"] {
 		var j Job
 		if json.Unmarshal(raw, &j) != nil || j.Revision < 1 || trim(j.Name) == "" || trim(j.Prompt) == "" || j.SessionID == "" || strings.ContainsAny(j.SessionID, "/\\\x00") || j.TimeoutMinutes < 1 || j.TimeoutMinutes > 1440 {

@@ -136,6 +136,12 @@ scheduled jobs the same way. The chat keeps one conversation; `/new` starts over
 without the earlier context. See
 [operations](docs/OPERATIONS.md#ask-sift-chat).
 
+**My activity** builds a timeline of your day. A few times a day, Sift asks your
+local Pi to look through the tools you already use (commits, pull requests,
+messages, meetings) and write down the work sessions it finds, linked to your
+tasks. You see and can change what it looks at before it starts; your own edits
+are never overwritten. See [operations](docs/OPERATIONS.md#my-activity).
+
 Each scheduled Pi job has its own exact persistent session, discovered models
 and thinking levels, IANA timezone, and one or more daily/weekday/interval/cron
 schedules; it runs at whichever comes next. Deleting a job (from its editor)

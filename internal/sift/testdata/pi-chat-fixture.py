@@ -7,6 +7,8 @@ the way Pi does, and acts out scenarios named in the message:
   sift-op   runs `sift tasks add` through bash and reports the JSON result
   demo      runs real Sift commands (from the appended guide) and other tools,
             pacing its stream like a model so the UI can be reviewed
+  activity-demo  acts as the activity tracker: records sample work sessions
+            inside the windows its guide names, linking matching tasks
   ask       asks the person to choose, then replies with the answer
   slow      streams until aborted
   fail      ends the reply with a provider error
@@ -227,9 +229,70 @@ def demo(cli):
     say("Done. Here's where things stand:\n\n- Added **Renew passport** for today, due Nov 14, marked high priority.\n- Marked one finished task as done.\n- One update failed because that task doesn't exist, so I left it alone.\n\n| Next | When |\n|---|---|\n| Fill in form DS-82 | Today |\n| Passport photo | Thursday |\n\nWant me to set a reminder for the photo?")
     finish()
 
+SESSIONS = [
+    ("08:40", 25, "Answered the vendor renewal email", "message", "email", "", "Confirmed the **Q1 renewal** terms with Acme and asked for the updated invoice.", ""),
+    ("09:10", 75, "Fixed staging CI for the web app", "code", "github", "https://github.com/acme/web/pull/412", "Pinned the Node image, fixed the flaky e2e wait, and merged **#412**. Quality Checks passed on `main` at dc2ea74.", "staging ci"),
+    ("10:30", 30, "Platform standup", "meeting", "calendar", "", "Walked through the CI fix and the IP allowlist blocker with the platform team.", ""),
+    ("11:05", 20, "Replied to Maya about the IP allowlist", "message", "slack", "https://acme.slack.com/archives/C04/p1730700000", "Shared the staging egress IPs in #platform and asked for an ETA.", "maya"),
+    ("11:40", 40, "Read up on pgvector index tuning", "research", "browser", "https://github.com/pgvector/pgvector#indexing", "Compared HNSW and IVFFlat build times for the search service.", ""),
+    ("13:40", 45, "Reviewed the onboarding pull request", "review", "github", "https://github.com/acme/web/pull/418", "Left 6 comments on **#418**, mostly about empty states. Approved after the fix-ups.", ""),
+    ("14:30", 80, "Built the activity timeline", "code", "git", "", "12 commits on `feat/activity` in **sift**: the ribbon, the week strip and live check rows.", ""),
+    ("16:00", 30, "Drafted the Q4 offsite plan", "writing", "docs", "https://docs.google.com/document/d/1offsite", "Outlined the agenda and the venue shortlist.", "offsite"),
+    ("16:40", 20, "Filed October expenses", "admin", "email", "", "Submitted 4 receipts to finance.", ""),
+    ("18:10", 30, "1:1 with Sam", "meeting", "calendar", "", "Talked about the Q1 roadmap and on-call load.", ""),
+    ("19:00", 45, "Fixed the flaky backup test", "code", "github", "https://github.com/akstspace/sift/pull/88", "Waited for the run to leave the active set before asserting.", ""),
+    ("21:00", 25, "Planned tomorrow in Sift", "other", "sift", "", "Moved 3 tasks to Today and snoozed the vendor follow-up.", ""),
+]
+
+def activity_demo(cli, text):
+    """Acts as the activity tracker: records sample sessions inside its windows."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    exe, data = cli.group(1), cli.group(2)
+    sift = '"%s" --data "%s" ' % (exe, data)
+    zone = re.search(r"their timezone is ([^)]+)\)", text)
+    tz = ZoneInfo(zone.group(1)) if zone else ZoneInfo("UTC")
+    windows = [(datetime.fromisoformat(a.replace("Z", "+00:00")), datetime.fromisoformat(b.replace("Z", "+00:00"))) for a, b in re.findall(r"\(from (\S+) to (\S+)\)", text)]
+    say("I'll check what's already recorded, then go through your tools for these windows.", thinking="**Covering the windows**\n\nRead existing sessions first so nothing is duplicated, then add sessions from git, GitHub, Slack and the calendar.")
+    first, last = windows[0][0].strftime("%Y-%m-%dT%H:%M:%SZ"), windows[-1][1].strftime("%Y-%m-%dT%H:%M:%SZ")
+    tool("call_list", "bash", {"command": sift + "activity list --from %s --to %s" % (first, last)}, bash(sift + "activity list --from %s --to %s" % (first, last)), 0.2)
+    tasks = json.loads(bash(sift + "tasks list")()[0] or "[]")
+    pace = float(os.getenv("PI_ACTIVITY_PACE", "0.35"))
+    named = re.search(r'--actor "(job:[^"]+)"', text)
+    actor = named.group(1) if named else "job:demo"
+    added = 0
+    for start, end in windows:
+        day = start.astimezone(tz).date()
+        while day <= end.astimezone(tz).date():
+            for at, minutes, title, cat, source, link, summary, match in SESSIONS:
+                h, m = map(int, at.split(":"))
+                begin = datetime(day.year, day.month, day.day, h, m, tzinfo=tz)
+                finish_at = begin + timedelta(minutes=minutes)
+                if begin < start or finish_at > end:
+                    continue
+                cmd = sift + "activity add --start %s --end %s --title %s --summary %s --category %s --source %s --source-key %s --actor %s" % (
+                    begin.isoformat(), finish_at.isoformat(), shlex.quote(title), shlex.quote(summary), cat, source, shlex.quote("demo:%s:%s" % (day, at)), shlex.quote(actor))
+                if link:
+                    cmd += " --link " + shlex.quote(link)
+                linked = [t for t in tasks if match and match in t.get("title", "").lower() and not t.get("deletedAt")]
+                if linked:
+                    cmd += " --task " + linked[0]["id"]
+                tool("call_add_%d" % added, "bash", {"command": cmd}, bash(cmd), pace)
+                added += 1
+            day += timedelta(days=1)
+    say("Recorded %d sessions. Your day so far: mostly CI and review work in the morning, then the activity timeline." % added)
+    finish()
+
 def run(text, images):
     # The chat's guide names the CLI; a scheduled job's prompt does.
     cli = sift_cli or re.search(r'Use "(.+?)" --data "(.+?)" for the local task CLI', text)
+    if text.strip().endswith("activity-demo") and cli:
+        state["streaming"], state["abort"] = True, threading.Event()
+        send({"type": "agent_start"}); send({"type": "turn_start"})
+        user = {"role": "user", "content": [{"type": "text", "text": text}], "timestamp": now()}
+        messages.append(user)
+        send({"type": "message_start", "message": user}); send({"type": "message_end", "message": user})
+        return activity_demo(cli, text)
     if text.rsplit("</sift-context>", 1)[-1].strip().endswith("demo") and cli:
         state["streaming"], state["abort"] = True, threading.Event()
         send({"type": "agent_start"}); send({"type": "turn_start"})

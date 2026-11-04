@@ -39,6 +39,10 @@ Read comments before working on a task and account for the user's clarifications
 
 Use `sift runs watch RUN_ID` to follow existing work without starting anything. `sift jobs run JOB_ID --wait` starts the authorized job once and follows that exact run. Status changes and new transcript activity go to stderr; stdout contains the final run JSON. Failed, cancelled, timed-out, interrupted, and action-needed runs exit nonzero even when final JSON is returned. Ctrl+C stops following and leaves the job running; use `sift runs cancel RUN_ID` only when cancellation is authorized. Inspect run history after a lost submission response; never blindly submit again.
 
+## Activity
+
+My activity is a timeline of the person's own work sessions, recorded by their activity tracker (a job with `kind: "activity"`) and by them. `sift activity list --from YYYY-MM-DD --to YYYY-MM-DD` (default today) or `--task TASK_ID` returns sessions with `start`, `end`, `title`, `summary`, `category`, `source`, `link`, and `taskId`, plus the windows already checked. Use it to answer what the person did, or how long a task took. Record a session only when you are the tracker or the person asks: `sift activity add --start TIME --end TIME --title TEXT --category KIND --source NAME --source-key KEY --actor "your-agent-name"`, with times in RFC 3339. A repeated source key updates the existing session. Agents can't change or delete sessions the person recorded or edited. Only the person sets up or changes activity tracking.
+
 ## CLI progress
 
 `--progress auto|always|never` controls progress; `auto` (default) shows it only on terminal stderr. For captured agent logs use `--progress=always`; `--quiet` suppresses it without suppressing results or errors. Backups, updates, model discovery, and uploads report actual stages/counts/bytes and elapsed waiting, not invented percentages or ETA. Progress is not proof of success: inspect the final result and exit status. Stream or connection failures never automatically replay a mutation; inspect effects before retrying. Model discovery runs no AI task.

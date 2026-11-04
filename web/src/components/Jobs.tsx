@@ -19,13 +19,14 @@ import {
   IconSettings as Settings2,
   IconPlayerStop as Square,
   IconTerminal2 as Terminal,
+  IconTimeline as Timeline,
   IconTrash as Trash2,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { api, friendlyTime } from "../api";
 import type { CatalogIcon, Job, PiInfo, Run, Snapshot, Task } from "../types";
 import { Button, Busy, Confirm, Empty, Field } from "./shared";
-import { JobSchedules, describeSchedules } from "./JobSchedules";
+import { JobSchedules, describeDailyTimes, describeSchedules } from "./JobSchedules";
 import { useDraftGuard, useDraftProtection } from "./DraftGuard";
 import {
   Dialog,
@@ -42,13 +43,18 @@ export function Jobs({
   create,
   onCreated,
   onRun,
+  onOpenActivity,
 }: {
   snapshot: Snapshot;
   refresh: () => Promise<void>;
   create: boolean;
   onCreated: () => void;
   onRun: (id: string) => void;
+  onOpenActivity?: () => void;
 }) {
+  // Activity tracking is set up and changed on My activity, not here.
+  const tracker = snapshot.jobs.find(j => j.kind === "activity");
+  const jobs = snapshot.jobs.filter(j => j !== tracker);
   const [editing, setEditing] = useState<Job | null>(null),
     [busy, setBusy] = useState("");
   const blank = (): Job => ({
@@ -108,7 +114,24 @@ export function Jobs({
           now.
         </span>
       </div>
-      {!snapshot.jobs.length ? (
+      {tracker && (
+        <article className="job-row tracker-row">
+          <div className={"job-symbol " + (snapshot.runs.some(r => r.jobId === tracker.id && r.status === "running") ? "active" : "")}>
+            <Timeline size={21} />
+          </div>
+          <div className="job-information">
+            <div className="job-title">
+              <Action onClick={() => onOpenActivity?.()}>{tracker.name}</Action>
+              <span className={"status-badge " + (tracker.enabled ? "enabled" : "paused")}>{tracker.enabled ? "Scheduled" : "Paused"}</span>
+            </div>
+            <p>Writes down what you worked on, {describeDailyTimes(tracker.schedules)}.</p>
+          </div>
+          <div className="job-controls">
+            <Button variant="outline" onClick={() => onOpenActivity?.()}>Open My activity</Button>
+          </div>
+        </article>
+      )}
+      {!jobs.length ? (
         <Empty
           icon={Clock3}
           title="A little help, at the right time."
@@ -124,7 +147,7 @@ export function Jobs({
         </Empty>
       ) : (
         <div className="jobs-list">
-          {snapshot.jobs.map((j) => {
+          {jobs.map((j) => {
             const active = snapshot.runs.find(
               (r) => r.jobId === j.id && r.status === "running",
             );

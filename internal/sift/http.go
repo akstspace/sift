@@ -456,6 +456,7 @@ func (s *Service) routes() http.Handler {
 		}
 		writeJSON(w, 200, map[string]any{"cancelled": true})
 	})
+	s.activityRoutes(mux)
 	mux.HandleFunc("POST /api/images", func(w http.ResponseWriter, r *http.Request) {
 		s.runMu.Lock()
 		paused := s.maintenance

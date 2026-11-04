@@ -23,6 +23,7 @@ import {
   IconSun as Sun,
   IconSunHigh as SunMedium,
   IconTerminal2 as Terminal,
+  IconTimeline as Timeline,
   IconTrash as Trash2,
   IconWifiOff as WifiOff,
   IconX as X,
@@ -60,6 +61,7 @@ const Jobs = preloadable(() => import("./components/Jobs").then(m => m.Jobs));
 const Runs = preloadable(() => import("./components/Jobs").then(m => m.Runs));
 const Settings = preloadable(() => import("./components/Settings").then(m => m.Settings));
 const Organization = preloadable(() => import("./components/Organization").then(m => m.Organization));
+const MyActivity = preloadable(() => import("./activity/MyActivity").then(m => m.MyActivity));
 import { AppSidebar } from "./components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "./components/ui/sidebar";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "./components/ui/breadcrumb";
@@ -106,6 +108,7 @@ function Workspace() {
     [createJob, setCreateJob] = useState(false),
     [selectedRun, setSelectedRun] = useState(""),
     [lastTask, setLastTask] = useState(""),
+    [activityDay, setActivityDay] = useState(""),
     [clock, setClock] = useState(Date.now());
   const search = useRef<HTMLInputElement>(null),
     refreshRunning = useRef(false),
@@ -454,7 +457,7 @@ function Workspace() {
       </MotionConfig>
     );
   const boardPage = ["today", "backlog", "trash", "archive"].includes(page);
-  const pageLabels: Record<string, string> = { today: "Today", backlog: "All tasks", trash: "Trash", archive: "Archive", organization: "Projects", jobs: "Agents", runs: "Run history", settings: "Settings" };
+  const pageLabels: Record<string, string> = { today: "Today", backlog: "All tasks", activity: "My activity", trash: "Trash", archive: "Archive", organization: "Projects", jobs: "Agents", runs: "Run history", settings: "Settings" };
   const viewedTask = snapshot.tasks.find(t => t.id === (selected?.id || lastTask));
   const viewedRun = page === "runs" ? snapshot.runs.find(r => r.id === selectedRun) : undefined;
   const chatContext = [
@@ -462,6 +465,7 @@ function Workspace() {
     query ? `Searching for: ${query}.` : "",
     viewedTask ? `Open task: ${viewedTask.title} (${viewedTask.id}).` : "",
     viewedRun ? `Open run: ${viewedRun.jobName} (${viewedRun.id}).` : "",
+    page === "activity" ? `Viewing activity for ${activityDay || "today"}.` : "",
   ].filter(Boolean).join(" ");
   const taskView = project ? projectView : snapshot.settings.view;
   const title = project
@@ -487,6 +491,7 @@ function Workspace() {
       icon: Archive,
       count: activeTasks.filter((t) => t.status !== "done").length,
     },
+    { id: "activity", label: "My activity", icon: Timeline },
     { id: "organization", label: "Projects", icon: Folder },
     {
       id: "jobs",
@@ -794,6 +799,16 @@ function Workspace() {
                         /></PresenceFrame></AnimatePresence>
                       )}
                     </div>
+                  ) : page === "activity" ? (
+                    <MyActivity
+                      snapshot={snapshot}
+                      refresh={refresh}
+                      catalog={catalog}
+                      onOpenTask={openTask}
+                      onOpenRun={(id) => { navigate("runs"); setSelectedRun(id); }}
+                      day={activityDay}
+                      onDay={setActivityDay}
+                    />
                   ) : page === "jobs" ? (
                     <Jobs
                       snapshot={snapshot}
@@ -804,6 +819,7 @@ function Workspace() {
                         setSelectedRun(id);
                         setPage("runs");
                       }}
+                      onOpenActivity={() => navigate("activity")}
                     />
                   ) : page === "runs" ? (
                     <Runs
@@ -873,6 +889,7 @@ function Workspace() {
                 onOpen={openTask}
                 onAddChild={(parent) => addTask("open", parent)}
                 refresh={refresh}
+                onOpenActivity={(day) => { navigate("activity"); setActivityDay(day); }}
               />
             )}
           </AnimatePresence>

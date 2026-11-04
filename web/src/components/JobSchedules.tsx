@@ -30,6 +30,12 @@ export function describeSchedule(s: JobSchedule) {
   if (s.type === "interval") return `Every ${s.schedule}`;
   return `Cron ${s.schedule}`;
 }
+/** "every day at 12:30, 17:30 and 22:00" when every schedule is daily, else the usual summary. */
+export function describeDailyTimes(list: JobSchedule[]) {
+  if (!list.length || !list.every(s => s.type === "daily")) return describeSchedules(list).toLowerCase();
+  const times = list.map(s => s.schedule).sort();
+  return "every day at " + (times.length > 1 ? times.slice(0, -1).join(", ") + " and " + times[times.length - 1] : times[0]);
+}
 /** A short summary for the jobs list; long lists end with a count. */
 export function describeSchedules(list: JobSchedule[]) {
   const parts = list.map(describeSchedule);

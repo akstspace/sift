@@ -96,6 +96,11 @@ type Job struct {
 	Pending        bool          `json:"pending"`
 	IncludeImages  bool          `json:"includeImages"`
 	Revision       int           `json:"revision"`
+	// Kind is "activity" for the activity tracker, the one job that records
+	// what the person did; other jobs leave it empty. Since is when tracking
+	// started, the earliest time its automatic checks look at.
+	Kind  string `json:"kind,omitempty"`
+	Since string `json:"since,omitempty"`
 }
 
 // JobSchedule is one recurring trigger: daily or selected weekdays at a local
@@ -117,6 +122,8 @@ type Run struct {
 	Model     string `json:"model"`
 	SessionID string `json:"sessionId"`
 	Job       Job    `json:"job"`
+	// Windows are the stretches of time an activity check looks through.
+	Windows []ActivityWindow `json:"windows,omitempty"`
 }
 
 // RunEntry is one line of a run transcript: "text" and "thinking" from the

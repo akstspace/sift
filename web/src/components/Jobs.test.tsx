@@ -40,6 +40,23 @@ describe("scheduled jobs without model prompts", () => {
     expect(screen.queryByText("Stale discovery failure")).toBeNull();
     expect(screen.getByRole("combobox", { name: "Model" }).textContent).toBe("fixture / Reasoner");
   });
+  it("keeps activity tracking apart from jobs and opens My activity", async () => {
+    const tracker = jobFixture({ id: "job_activity", kind: "activity", name: "My activity", enabled: true, schedules: [{ type: "daily", schedule: "17:30" }, { type: "daily", schedule: "12:30" }] });
+    const onOpenActivity = vi.fn();
+    const props = { snapshot: snapshotFixture({ jobs: [tracker, jobFixture()], runs: [{ id: "run_activity", jobId: "job_activity", jobName: "My activity", status: "running", startedAt: "2026-01-02T12:00:00Z", endedAt: "", summary: "", error: "", model: "", sessionId: "", job: tracker }] }), refresh: vi.fn(async () => {}), create: false, onCreated: vi.fn(), onRun: vi.fn(), onOpenActivity };
+    const { rerender } = render(<Jobs {...props} />, { wrapper: TestProviders });
+    const user = userEvent.setup();
+    expect(screen.getByText("Writes down what you worked on, every day at 12:30 and 17:30.")).toBeDefined();
+    expect(screen.getByText("Scheduled")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Open My activity" }));
+    await user.click(screen.getByRole("button", { name: "My activity" }));
+    expect(onOpenActivity).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("button", { name: "Morning planning" })).toBeDefined();
+    rerender(<Jobs {...props} snapshot={snapshotFixture({ jobs: [{ ...tracker, enabled: false }] })} onOpenActivity={undefined} />);
+    expect(screen.getByText("Paused")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Open My activity" }));
+    expect(screen.getByRole("button", { name: "Set up your first job" })).toBeDefined();
+  });
   it("prevents duplicate job saves while persistence is pending", async () => {
     const { user, props } = mount(); await user.click(screen.getByRole("button", { name: "Morning planning" })); await screen.findByRole("button", { name: "Refresh models" });
     const pending = deferred<unknown>(); mock.mockReturnValueOnce(pending.promise);

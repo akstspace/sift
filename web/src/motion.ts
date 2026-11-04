@@ -11,7 +11,7 @@ export const leave = [0.4, 0, 1, 1] as const;
 export const shellSpring = { type: "spring", stiffness: 340, damping: 38, mass: 0.8 } as const;
 export const selectionSpring = { type: "spring", stiffness: 520, damping: 42, mass: 0.6 } as const;
 export const titleMorph = { type: "spring", stiffness: 420, damping: 40, mass: 0.7 } as const;
-export const pageOrder = ["today", "backlog", "organization", "jobs", "runs", "settings", "archive", "trash"];
+export const pageOrder = ["today", "backlog", "activity", "organization", "jobs", "runs", "settings", "archive", "trash"];
 export const projectTitleId = (id: string) => "project-title:" + id;
 
 export type PageDirection = { sign: 1 | -1; depth: boolean };
