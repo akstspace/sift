@@ -60,30 +60,32 @@ export function SessionEditor({ entry, day, tz, now, tasks, onClose, refresh }: 
           <DialogDescription>{dayTitle(day)}{entry.id && entry.actor !== "user" ? ". Once you edit it, checks leave it as you wrote it." : ""}</DialogDescription>
         </DialogHeader>
         <form onSubmit={save}>
-          <fieldset className="session-editor-fields" disabled={busy}>
-            <Field label="What you did">
-              <Input required maxLength={200} autoFocus placeholder="Reviewed the onboarding PR" value={draft.title} onChange={e => set({ title: e.target.value })} />
-            </Field>
-            <div className="form-grid session-editor-times">
-              <Field label="From"><Input type="time" required value={draft.start} onChange={e => set({ start: e.target.value })} /></Field>
-              <Field label="To" hint={endDay !== day ? "Ends the next day" : undefined}><Input type="time" required value={draft.end} onChange={e => set({ end: e.target.value })} /></Field>
-              <Field label="Kind of work">
-                <Choice value={draft.category} onValueChange={category => set({ category })} options={CATEGORIES.map(c => ({ value: c.id, label: c.label }))} />
+          <div className="session-editor-scroll">
+            <fieldset className="session-editor-fields" disabled={busy}>
+              <Field label="What you did">
+                <Input required maxLength={200} autoFocus placeholder="Reviewed the onboarding PR" value={draft.title} onChange={e => set({ title: e.target.value })} />
               </Field>
-            </div>
-            <Field label="Details" hint="Markdown works here.">
-              <Textarea rows={3} maxLength={4000} value={draft.summary} onChange={e => set({ summary: e.target.value })} />
-            </Field>
-            <div className="form-grid">
-              <Field label="Task">
-                <SearchChoice searchLabel="Search tasks" value={draft.taskId} onValueChange={taskId => set({ taskId })} options={options} placeholder="No task" />
+              <div className="form-grid session-editor-times">
+                <Field label="From"><Input type="time" required value={draft.start} onChange={e => set({ start: e.target.value })} /></Field>
+                <Field label="To" hint={endDay !== day ? "Ends the next day" : undefined}><Input type="time" required value={draft.end} onChange={e => set({ end: e.target.value })} /></Field>
+                <Field label="Kind of work">
+                  <Choice value={draft.category} onValueChange={category => set({ category })} options={CATEGORIES.map(c => ({ value: c.id, label: c.label }))} />
+                </Field>
+              </div>
+              <Field label="Details" hint="Markdown works here.">
+                <Textarea rows={3} maxLength={4000} value={draft.summary} onChange={e => set({ summary: e.target.value })} />
               </Field>
-              <Field label="Link">
-                <Input type="url" placeholder="https://" value={draft.link} onChange={e => set({ link: e.target.value })} />
-              </Field>
-            </div>
-            {error && <div className="error" role="alert">{error}</div>}
-          </fieldset>
+              <div className="form-grid">
+                <Field label="Task">
+                  <SearchChoice searchLabel="Search tasks" value={draft.taskId} onValueChange={taskId => set({ taskId })} options={options} placeholder="No task" />
+                </Field>
+                <Field label="Link">
+                  <Input type="url" placeholder="https://" value={draft.link} onChange={e => set({ link: e.target.value })} />
+                </Field>
+              </div>
+              {error && <div className="error" role="alert">{error}</div>}
+            </fieldset>
+          </div>
           <DialogFooter>
             <Button type="button" variant="outline" disabled={busy} onClick={close}>Cancel</Button>
             <Button type="submit" disabled={busy || (!!entry.id && !dirty)}>{busy ? <Busy label="Saving" /> : entry.id ? "Save" : "Add"}</Button>

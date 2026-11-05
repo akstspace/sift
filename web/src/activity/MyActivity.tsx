@@ -296,8 +296,9 @@ function DayOverview({ view, tz, now, filter, onFilter, hovered, onHover, onReve
               <span className="legend-swatch" aria-hidden />{c.label}<span className="legend-time">{duration(c.total)}</span>
             </button>
           ))}
+          {/* Only when the filter hides something: with one kind of work on the day there's nothing more to show. */}
           <AnimatePresence initial={false}>
-            {filter && (
+            {filter && view.categories.length > 1 && (
               <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.1 } }}>
                 <Button variant="ghost" size="sm" className="legend-clear" onClick={() => onFilter("")}>Show all</Button>
               </motion.span>

@@ -202,8 +202,18 @@ describe("the timeline", () => {
     expect(await screen.findByRole("article", { name: "Platform standup" })).toBeDefined();
     await user.click(screen.getByRole("button", { name: /^Coding/ }));
     await feedGone("Platform standup");
-    weeks["2026-11-02"] = { entries: ENTRIES.filter(e => e.id !== "a1"), checks: CHECKS };
+    // Coding alone on the day: the filter hides nothing, so there's no Show all.
+    weeks["2026-11-02"] = { entries: [ENTRIES[1], { ...ENTRIES[0], category: "code" }], checks: CHECKS };
     update({ cursor: base.cursor + 1 });
+    expect(await screen.findByRole("article", { name: "Drafted the release notes" })).toBeDefined();
+    expect(screen.getByRole("button", { name: /^Coding/ }).getAttribute("aria-pressed")).toBe("true");
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Show all" })).toBeNull());
+    weeks["2026-11-02"] = { entries: ENTRIES, checks: CHECKS };
+    update({ cursor: base.cursor + 2 });
+    expect(await screen.findByRole("button", { name: "Show all" })).toBeDefined();
+    await feedGone("Platform standup");
+    weeks["2026-11-02"] = { entries: ENTRIES.filter(e => e.id !== "a1"), checks: CHECKS };
+    update({ cursor: base.cursor + 3 });
     expect(await screen.findByRole("article", { name: "Platform standup" })).toBeDefined();
     expect(screen.queryByRole("button", { name: /^Coding/ })).toBeNull();
     await waitFor(() => expect(screen.queryByRole("button", { name: "Show all" })).toBeNull());

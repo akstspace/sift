@@ -3636,11 +3636,14 @@ button.tracker-status:focus-visible { outline: 2px solid var(--ring, var(--blue)
 .tracker-eyebrow { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 14px; color: var(--muted); font-size: 11.5px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; }
 .tracker-setup h1 { margin: 0 0 14px; font-size: 34px; line-height: 1.12; letter-spacing: -0.02em; text-wrap: balance; }
 .tracker-lede { max-width: 58ch; margin: 0 0 30px; color: var(--muted); font-size: 15px; line-height: 1.65; }
-.tracker-fields { display: grid; gap: 24px; }
+/* One column that never grows past its container: a long URL or path in the
+   prompt wraps inside the textarea instead of widening the form. */
+.tracker-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
 .tracker-prompt { position: relative; }
-.tracker-prompt textarea { min-height: 210px; font-size: 13.5px; line-height: 1.6; resize: vertical; }
+.tracker-prompt textarea { min-height: 210px; font-size: 13.5px; line-height: 1.6; resize: vertical; overflow-wrap: anywhere; }
 .tracker-fields.compact .tracker-prompt textarea { min-height: 150px; max-height: 240px; }
-.tracker-dialog .tracker-prompt textarea { max-height: 196px; }
+/* In settings the prompt box keeps one size whatever the prompt's length, and scrolls. */
+.tracker-dialog .tracker-prompt textarea { field-sizing: fixed; height: 210px; min-height: 5lh; max-height: 60dvh; }
 .tracker-restore { position: absolute; top: -5px; right: 0; }
 .tracker-restore [data-slot="button"] { height: 26px; padding: 0 8px; color: var(--muted); font-size: 12.5px; }
 .tracker-label strong { font-size: 13px; font-weight: 600; }
@@ -3683,14 +3686,21 @@ button.tracker-status:focus-visible { outline: 2px solid var(--ring, var(--blue)
 .setup-preview-text .gap-shimmer { margin-top: 8px; }
 
 /* Settings and editing. */
-.tracker-dialog { max-width: 640px; }
-.tracker-dialog form { display: flex; flex-direction: column; min-height: 0; }
-.tracker-dialog-scroll { display: grid; gap: 22px; max-height: min(72vh, 680px); overflow: auto; padding: 4px 2px 8px; margin-bottom: 8px; }
+/* Both dialogs keep their width and fit the window: the header and buttons stay
+   put while what's between them scrolls. */
+.tracker-dialog, .session-editor { display: flex; flex-direction: column; max-height: calc(100dvh - 32px); overflow: hidden; }
+.tracker-dialog { max-width: min(640px, calc(100% - 2rem)); }
+.tracker-dialog > [data-slot="dialog-header"], .session-editor > [data-slot="dialog-header"] { flex-shrink: 0; min-width: 0; overflow-wrap: anywhere; }
+.tracker-dialog form, .session-editor form { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.tracker-dialog [data-slot="dialog-footer"], .session-editor [data-slot="dialog-footer"] { flex-shrink: 0; }
+.tracker-dialog-scroll { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 4px 2px 8px; margin-bottom: 8px; }
 .tracker-enabled { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border-radius: 12px; background: var(--tint); cursor: pointer; }
 .tracker-enabled strong { display: block; font-size: 14px; font-weight: 600; }
 .tracker-enabled small { display: block; margin-top: 2px; color: var(--muted); font-size: 12.5px; }
-.session-editor { max-width: 580px; }
-.session-editor-fields { display: grid; gap: 16px; margin-bottom: 8px; }
+.session-editor { max-width: min(580px, calc(100% - 2rem)); }
+.session-editor-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 3px; margin: -3px -3px 5px; }
+.session-editor-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.session-editor textarea { max-height: min(12lh, 30dvh); overflow-wrap: anywhere; }
 .session-editor-times { grid-template-columns: 1fr 1fr 1.5fr; }
 
 @media (max-width: 960px) {
