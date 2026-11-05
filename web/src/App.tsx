@@ -52,7 +52,7 @@ const Onboarding = lazy(() => import("./components/Onboarding").then(m => ({ def
 import { TaskBoard } from "./components/TaskBoard";
 // Opening a task is the workspace's primary interaction. Its sheet must be
 // ready with the board, not replaced by a second panel after a lazy import.
-import { TaskDetail } from "./components/TaskDetail";
+import { TaskDetail, type TaskView } from "./components/TaskDetail";
 import { DoneReasonDialog } from "./components/DoneReasonDialog";
 import { PresenceFrame } from "./components/PresenceFrame";
 import { UpdateNotice } from "./components/UpdateNotice";
@@ -108,6 +108,8 @@ function Workspace() {
     [createJob, setCreateJob] = useState(false),
     [selectedRun, setSelectedRun] = useState(""),
     [lastTask, setLastTask] = useState(""),
+    // Tasks open as a side panel or a full page; the last choice is kept, like the sidebar's.
+    [detailView, setDetailView] = useState<TaskView>(() => { try { return localStorage.getItem("sift.taskView") === "page" ? "page" : "panel"; } catch { return "panel"; } }),
     [activityDay, setActivityDay] = useState(""),
     [clock, setClock] = useState(Date.now());
   const search = useRef<HTMLInputElement>(null),
@@ -890,6 +892,8 @@ function Workspace() {
                 onAddChild={(parent) => addTask("open", parent)}
                 refresh={refresh}
                 onOpenActivity={(day) => { navigate("activity"); setActivityDay(day); }}
+                view={detailView}
+                onViewChange={view => { setDetailView(view); try { localStorage.setItem("sift.taskView", view); } catch { /* Storage can be disabled. */ } }}
               />
             )}
           </AnimatePresence>

@@ -115,6 +115,37 @@ describe("task sheet read, draft, and save contracts", () => {
     await screen.findByRole("list", { name: "Task activity" }).catch(() => {});
     expect(document.querySelector(".agent-review")).toBeNull();
   });
+  it("says why Save did nothing right beside Save, until that's dealt with", async () => {
+    const { props, user } = mount(); const input = screen.getByRole("textbox", { name: "Add a comment" });
+    await user.type(input, "Draft note");
+    await user.click(save());
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("Post or clear your comment before saving task changes.");
+    // Outside the scrolling task, just above the actions: visible wherever the task is scrolled to.
+    expect(alert.closest(".detail-scroll")).toBeNull();
+    expect(alert.nextElementSibling?.tagName).toBe("FOOTER");
+    await user.clear(input);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(props.onSave).not.toHaveBeenCalled();
+  });
+  it("lets an unadded tag's refusal go once the tag is cleared or added", async () => {
+    const { props, user } = mount(taskFixture(), { tags: [{ id: "tag_1", name: "Research", color: "blue", archived: false, icon: "tag" }] });
+    const input = screen.getByRole("textbox", { name: "New tag name" });
+    await user.type(input, "release");
+    await user.click(save());
+    expect((await screen.findByRole("alert")).textContent).toBe("Add or clear the new tag before saving task changes.");
+    await user.clear(input);
+    expect(screen.queryByRole("alert")).toBeNull();
+    // A new tag is asked about at the next Save, not while it's typed.
+    await user.type(input, "research");
+    expect(screen.queryByRole("alert")).toBeNull();
+    await user.click(save());
+    expect((await screen.findByRole("alert")).textContent).toContain("Add or clear the new tag");
+    // Adding it (here, reusing the existing tag) settles it too.
+    await user.type(input, "{Enter}");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(props.onSave).not.toHaveBeenCalled();
+  });
   it("preserves a failed comment and reuses its request ID on retry, protecting unposted comments", async () => {
     const { props, user } = mount(); const input = screen.getByRole("textbox", { name: "Add a comment" });
     expect((screen.getByRole("button", { name: "Post comment" }) as HTMLButtonElement).disabled).toBe(true);
@@ -307,7 +338,8 @@ describe("task sheet read, draft, and save contracts", () => {
       await user.click(screen.getByRole("combobox", { name: label })); await user.click(await screen.findByRole("option", { name }));
     }
     for (const label of ["Due date", "Snooze until"]) {
-      await user.click(screen.getByRole("button", { name: label })); await user.click(screen.getByRole("button", { name: "Today" }));
+      // Named by its label, then what it shows.
+      await user.click(screen.getByRole("button", { name: new RegExp(`^${label} (Set due date|Set date)$`) })); await user.click(screen.getByRole("button", { name: "Today" }));
     }
     await user.click(save());
     expect(props.onSave.mock.calls[0][0]).toMatchObject({ status: "progress", priority: "high", project: "p", today: true, parentId: parent.id, dueDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), snoozedUntil: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
@@ -377,6 +409,137 @@ describe("safe local media and catalog icons", () => {
     await waitFor(() => expect(document.querySelector(".attachment-grid img")).not.toBeNull());
     await user.click(save()); expect(props.onSave.mock.calls[0][0].attachments).toEqual(["img_local"]);
     expect(uploadMock).toHaveBeenCalledWith(file);
+  });
+  it("switches between side panel and full page without losing what's in it", async () => {
+    const onViewChange = vi.fn();
+    const task = taskFixture();
+    const props = { initial: task, snapshot: snapshotFixture({ tasks: [task] }), catalog: catalogFixture, onClose: vi.fn(), onSave: vi.fn(async (t: Task) => t), onOpen: vi.fn(), onAddChild: vi.fn(), refresh: vi.fn(async () => {}), onViewChange };
+    const view = render(<GuardedSheet {...props} view="panel" />, { wrapper: TestProviders });
+    const user = userEvent.setup();
+    editTitle(); await user.type(screen.getByRole("textbox", { name: "Task title" }), " soon");
+    const description = screen.getByRole("heading", { name: "Description" });
+    await user.click(screen.getByRole("button", { name: "Open as full page" }));
+    expect(onViewChange).toHaveBeenCalledWith("page");
+    view.rerender(<GuardedSheet {...props} view="page" />);
+    const sheet = screen.getByRole("dialog", { name: "Task details" });
+    expect(sheet.className).toContain("is-page");
+    // The same parts carry over, unsaved title and all.
+    expect(description.isConnected).toBe(true);
+    expect((screen.getByRole("textbox", { name: "Task title" }) as HTMLTextAreaElement).value).toContain(" soon");
+    await user.click(within(sheet).getByRole("button", { name: "Open as side panel" }));
+    expect(onViewChange).toHaveBeenLastCalledWith("panel");
+    view.unmount();
+    // A phone's panel already fills the screen: no switch, whatever was chosen.
+    const media = vi.mocked(window.matchMedia), wide = media.getMockImplementation()!;
+    media.mockImplementation(query => ({ ...wide(query), matches: true }));
+    try {
+      render(<GuardedSheet {...props} view="page" />, { wrapper: TestProviders });
+      expect(screen.getByRole("dialog", { name: "Task details" }).className).not.toContain("is-page");
+      expect(screen.queryByRole("button", { name: /Open as/ })).toBeNull();
+    } finally { media.mockImplementation(wide); }
+  });
+  it("lays a wide full page out beside its properties and names the task once its title scrolls away", async () => {
+    const watchers: IntersectionObserverCallback[] = [];
+    vi.stubGlobal("IntersectionObserver", class { constructor(cb: IntersectionObserverCallback) { watchers.push(cb); } observe() {} disconnect() {} });
+    const task = taskFixture({ title: "Fix staging CI" });
+    const props = { initial: task, snapshot: snapshotFixture({ tasks: [task] }), catalog: catalogFixture, onClose: vi.fn(), onSave: vi.fn(async (t: Task) => t), onOpen: vi.fn(), onAddChild: vi.fn(), refresh: vi.fn(async () => {}), onViewChange: vi.fn() };
+    const scrollAway = (away: boolean) => act(() => watchers.at(-1)!([{ isIntersecting: !away } as IntersectionObserverEntry], {} as IntersectionObserver));
+    const named = () => document.querySelector(".detail-top-task .is-shown")?.textContent ?? null;
+    const view = render(<GuardedSheet {...props} view="panel" />, { wrapper: TestProviders });
+    const properties = () => screen.getByRole("group", { name: "Properties" });
+    // The panel keeps its order: properties, the task, then where it sits among other tasks.
+    expect(within(properties()).queryByText("Parent task")).toBeNull();
+    expect(screen.getByText("Parent task").compareDocumentPosition(screen.getByRole("heading", { name: "Subtasks" })) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    // The panel never repeats the title: the board behind it shows which task is open.
+    scrollAway(true);
+    expect(named()).toBeNull();
+    const media = vi.mocked(window.matchMedia), narrow = media.getMockImplementation()!;
+    media.mockImplementation(query => ({ ...narrow(query), matches: query === "(min-width: 920px)" }));
+    try {
+      view.rerender(<GuardedSheet {...props} view="page" />);
+      expect(within(properties()).getByText("Parent task")).toBeTruthy();
+      expect(named()).toBe("Fix staging CI");
+      expect(document.querySelector(".detail-top-task")!.getAttribute("aria-hidden")).toBe("true");
+      scrollAway(false);
+      expect(named()).toBeNull();
+    } finally { media.mockImplementation(narrow); }
+  });
+  it("keeps the place being read when switching views", async () => {
+    const task = taskFixture();
+    const props = { initial: task, snapshot: snapshotFixture({ tasks: [task] }), catalog: catalogFixture, onClose: vi.fn(), onSave: vi.fn(async (t: Task) => t), onOpen: vi.fn(), onAddChild: vi.fn(), refresh: vi.fn(async () => {}), onViewChange: vi.fn() };
+    // A stand-in layout: the panel stacks title, properties, then content; the page puts the properties beside the content.
+    const proto = HTMLElement.prototype, top = Object.getOwnPropertyDescriptor(proto, "offsetTop")!, height = Object.getOwnPropertyDescriptor(proto, "offsetHeight")!;
+    const place = (el: HTMLElement) => {
+      const onPage = !!el.closest(".is-page"), parent = el.parentElement!, index = [...parent.children].indexOf(el);
+      if (el.classList.contains("task-page-head")) return [0, 100];
+      if (parent.classList.contains("task-page-side")) return [(onPage ? 0 : 100) + index * 60, 60];
+      if (parent.classList.contains("task-page-body")) return [100 + (onPage ? 0 : parent.parentElement!.querySelector(".task-page-side")!.children.length * 60) + index * 200, 200];
+      return [0, 0];
+    };
+    Object.defineProperty(proto, "offsetTop", { configurable: true, get(this: HTMLElement) { return place(this)[0]; } });
+    Object.defineProperty(proto, "offsetHeight", { configurable: true, get(this: HTMLElement) { return place(this)[1]; } });
+    try {
+      const view = render(<GuardedSheet {...props} view="panel" />, { wrapper: TestProviders });
+      const user = userEvent.setup();
+      const box = document.querySelector<HTMLElement>(".detail-scroll")!, side = box.querySelector<HTMLElement>(".task-page-side")!;
+      const body = [...box.querySelector(".task-page-body")!.children] as HTMLElement[];
+      expect(body.length).toBeGreaterThan(2);
+      // Reading the third part of the content in the panel: it stays 20px above the top on the page.
+      box.scrollTop = body[2].offsetTop + 20;
+      await user.click(screen.getByRole("button", { name: "Open as full page" }));
+      side.style.position = "sticky";
+      view.rerender(<GuardedSheet {...props} view="page" />);
+      expect(box.scrollTop).toBe(body[2].offsetTop + 20);
+      // On the page the pinned properties are always in view; the content being read decides.
+      box.scrollTop = body[1].offsetTop + 10;
+      await user.click(screen.getByRole("button", { name: "Open as side panel" }));
+      side.style.position = "";
+      view.rerender(<GuardedSheet {...props} view="panel" />);
+      expect(box.scrollTop).toBe(body[1].offsetTop + 10);
+      // Properties being read in the panel sit beside the title on the page, at its top.
+      box.scrollTop = 120;
+      await user.click(screen.getByRole("button", { name: "Open as full page" }));
+      side.style.position = "sticky";
+      view.rerender(<GuardedSheet {...props} view="page" />);
+      expect(box.scrollTop).toBe(0);
+    } finally {
+      Object.defineProperty(proto, "offsetTop", top);
+      Object.defineProperty(proto, "offsetHeight", height);
+    }
+  });
+  it("keeps the time editor's submit, shortcut, paste and cancel to itself", async () => {
+    const { props, user } = mount(taskFixture({ id: "tsk_ci", title: "Fix staging CI" }), { jobs: [jobFixture({ id: "job_activity", kind: "activity" })] });
+    const page = { entries: [], checks: [], gaps: [], tracker: null, defaultPrompt: "", defaultTimes: [], categories: [], lookbackDays: 7 };
+    apiMock.mockImplementation(async path => path.includes("duplicates") ? [] : path.startsWith("/activity?task=") ? page : path === "/activity" ? {} : { history: [] });
+    // The task has an unsaved change behind the editor.
+    editTitle(); await user.type(screen.getByRole("textbox", { name: "Task title" }), " today");
+    await user.click(await screen.findByRole("button", { name: "Add time" }));
+    let dialog = await screen.findByRole("dialog", { name: "Add activity" });
+    // Cancelling an untouched editor doesn't ask about the task's draft.
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add activity" })).toBeNull());
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Add time" }));
+    dialog = await screen.findByRole("dialog", { name: "Add activity" });
+    const what = within(dialog).getByRole("textbox", { name: "What you did" });
+    await user.type(what, "Paired on the deploy");
+    // Pasting an image into the editor doesn't attach it to the task.
+    fireEvent.paste(within(dialog).getByRole("textbox", { name: "Details" }), { clipboardData: { files: [new File(["png"], "shot.png", { type: "image/png" })] } });
+    fireEvent.drop(within(dialog).getByRole("textbox", { name: "Details" }), { dataTransfer: { files: [new File(["png"], "shot.png", { type: "image/png" })] } });
+    expect(uploadMock).not.toHaveBeenCalled();
+    // A session the service turns down doesn't save the task either.
+    const reads = apiMock.getMockImplementation()!;
+    apiMock.mockImplementationOnce(async () => { throw Error("Linked task not found"); });
+    fireEvent.keyDown(what, { key: "Enter", metaKey: true });
+    expect((await within(dialog).findByRole("alert")).textContent).toBe("Linked task not found");
+    expect(props.onSave).not.toHaveBeenCalled();
+    apiMock.mockImplementation(reads);
+    fireEvent.keyDown(what, { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith("/activity", "POST", expect.objectContaining({ entry: expect.objectContaining({ title: "Paired on the deploy", taskId: "tsk_ci" }) })));
+    expect(props.onSave).not.toHaveBeenCalled();
+    // The panel's own shortcut still saves the task.
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Task title" }), { key: "Enter", metaKey: true });
+    await waitFor(() => expect(props.onSave).toHaveBeenCalledOnce());
   });
   it("ignores empty/nonimage intake and selects only an offline catalog icon", async () => {
     const { props, user } = mount(); const form = document.querySelector(".detail-form")!;

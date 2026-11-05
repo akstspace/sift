@@ -26,7 +26,18 @@ export function pageDirection(from: { page: string; project: string }, to: { pag
 // A floating inspector enters from the board's right edge and settles without
 // bounce. It becomes opaque well before it stops travelling, so the board never
 // ghosts through it. Its backdrop follows the same presence lifecycle.
-export function taskSheetMotion(reduced: boolean, mobile: boolean) {
+/** Switching between the task panel and the full page: the sheet reshapes, and its header and footer travel with it. */
+export const sheetMorph = { duration: 0.36, ease: settle } as const;
+
+/** The task panel slides in from the right; the full page rises into place. */
+export function taskSheetMotion(reduced: boolean, mobile: boolean, page = false) {
+  if (page && !reduced) {
+    return {
+      initial: { opacity: 0, y: 14, scale: 0.99 },
+      animate: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.34, ease: settle, opacity: { duration: 0.14, ease: "linear" } } },
+      exit: { opacity: 0, y: 10, scale: 0.995, transition: { duration: 0.18, ease: leave, opacity: { duration: 0.16, delay: 0.02 } } },
+    };
+  }
   return {
     initial: { opacity: 0, x: reduced ? 0 : mobile ? 36 : 64, scale: reduced || mobile ? 1 : 0.985 },
     animate: { opacity: 1, x: 0, scale: 1, transition: reduced ? { duration: 0.12 } : { duration: 0.36, ease: settle, opacity: { duration: 0.14, ease: "linear" } } },

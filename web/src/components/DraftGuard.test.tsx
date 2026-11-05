@@ -36,6 +36,22 @@ describe("draft protection", () => {
     rerender(<DraftGuardProvider><Protected action={action} /></DraftGuardProvider>);
     fireEvent.click(screen.getByText("Leave view")); expect(action).toHaveBeenCalledOnce();
   });
+  it("asks about one draft only when guarding its own scope", async () => {
+    const own = vi.fn(), all = vi.fn(); const user = userEvent.setup();
+    function Scoped({ dirty }: { dirty: boolean }) {
+      const scope = useDraftProtection(dirty, false); const { guard } = useDraftGuard();
+      return <><button onClick={() => guard(own, scope)}>Close editor</button><button onClick={() => guard(all)}>Leave everything</button></>;
+    }
+    const { rerender } = render(<DraftGuardProvider><Protected dirty action={vi.fn()} /><Scoped dirty={false} /></DraftGuardProvider>);
+    // Another view's draft doesn't stop a clean editor from closing.
+    await user.click(screen.getByText("Close editor")); expect(own).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    await user.click(screen.getByText("Leave everything")); expect(screen.getByRole("alertdialog")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Keep editing" })); expect(all).not.toHaveBeenCalled();
+    rerender(<DraftGuardProvider><Protected dirty action={vi.fn()} /><Scoped dirty /></DraftGuardProvider>);
+    await user.click(screen.getByText("Close editor")); expect(screen.getByRole("alertdialog")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Discard changes" })); expect(own).toHaveBeenCalledTimes(2);
+  });
   it("fails clearly when used outside its provider", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     expect(() => renderHook(useDraftGuard)).toThrow("Draft guard provider is missing");

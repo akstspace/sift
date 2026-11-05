@@ -170,7 +170,7 @@ describe("the timeline", () => {
     const stats = screen.getByRole("region", { name: "Day at a glance" });
     expect(within(stats).getByText("5").nextSibling?.textContent).toBe("sessions");
     expect(within(stats).getByText("4").nextSibling?.textContent).toBe("tasks");
-    expect(screen.getAllByRole("article").map(a => a.getAttribute("aria-labelledby"))).toEqual(["a4", "a3", "a2", "a1", "a5"].map(id => "session-title-" + id));
+    expect(screen.getAllByRole("article").map(a => a.id)).toEqual(["a4", "a3", "a2", "a1", "a5"].map(id => "session-" + id));
     expect(screen.getByRole("region", { name: "Morning" })).toBeDefined();
     expect(within(row("Platform standup")).getByText("Added by you")).toBeDefined();
     expect(within(row("Replied to Maya")).getByText("Edited")).toBeDefined();

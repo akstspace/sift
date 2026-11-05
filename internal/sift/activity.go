@@ -129,9 +129,15 @@ func (s *Store) Activity(from, to time.Time) []ActivityEntry {
 	return s.activityWhere("json_extract(data,'$.start') < ? AND json_extract(data,'$.end') >= ?", []any{t, f}, func(e ActivityEntry) bool { return overlaps(e.Start, e.End, f, t) })
 }
 
-// TaskActivity lists the entries linked to a task, earliest first.
+// TaskActivity lists the entries linked to a task, earliest first, with those
+// on tasks merged into it (at any depth). Each keeps its own task link, so
+// undoing a merge gives the sessions back to the task they were recorded on.
 func (s *Store) TaskActivity(taskID string) []ActivityEntry {
-	return s.activityWhere("json_extract(data,'$.taskId') = ?", []any{taskID}, func(ActivityEntry) bool { return true })
+	return s.activityWhere(`json_extract(data,'$.taskId') IN (
+		WITH RECURSIVE merged(id) AS (
+			SELECT ?
+			UNION SELECT t.id FROM objects t JOIN merged m ON t.kind='task' AND json_extract(t.data,'$.mergedInto') = m.id
+		) SELECT id FROM merged)`, []any{taskID}, func(ActivityEntry) bool { return true })
 }
 
 func (s *Store) activityWhere(where string, args []any, keep func(ActivityEntry) bool) []ActivityEntry {
@@ -345,7 +351,9 @@ func (s *Store) SaveActivity(in ActivityEntry, expected int, actor string) (Acti
 	if exists && actor != "user" && (old.Actor == "user" || old.Edited) {
 		return old, conflict("The person recorded or edited this activity; leave it as it is")
 	}
-	if e.TaskID != "" {
+	// A new link must be to a live task. A session can keep the link it has
+	// when that task was merged or deleted since, so it can still be edited.
+	if e.TaskID != "" && (!exists || e.TaskID != old.TaskID) {
 		var t Task
 		if json.Unmarshal(rawTx(tx, "task", e.TaskID), &t) != nil || t.DeletedAt != "" || t.MergedInto != "" {
 			return e, invalid("Linked task not found")

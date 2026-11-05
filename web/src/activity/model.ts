@@ -187,6 +187,43 @@ export function dayView(day: string, tz: string, entries: ActivityEntry[], check
   };
 }
 
+export interface TaskDay { day: string; total: number; sessions: Session[] }
+export interface TaskTime {
+  /** Time worked: overlapping sessions count once. */
+  total: number;
+  sessions: number;
+  /** Newest first, each with its sessions newest first. A session belongs to the day it started. */
+  days: TaskDay[];
+  categories: { id: string; label: string; total: number }[];
+}
+
+/** The time spent on a task, from its sessions, by day and by kind of work. */
+export function taskTime(entries: ActivityEntry[], tz: string): TaskTime {
+  const sessions = entries.map(e => ({ ...e, from: ms(e.start), to: ms(e.end) })).sort((a, b) => b.from - a.from || b.to - a.to);
+  const days: TaskDay[] = [];
+  for (const s of sessions) {
+    const day = dayOf(s.from, tz);
+    let last = days[days.length - 1];
+    if (!last || last.day !== day) days.push(last = { day, total: 0, sessions: [] });
+    last.sessions.push(s);
+  }
+  for (const d of days) d.total = total(d.sessions);
+  const categories = CATEGORIES.map(c => ({ id: c.id, label: c.label, total: total(sessions.filter(s => categoryOf(s.category).id === c.id)) })).filter(c => c.total > 0);
+  return { total: total(sessions), sessions: sessions.length, days, categories };
+}
+
+/** The first days to show, whole, until they hold at least `count` sessions. */
+export function firstDays(days: TaskDay[], count: number): TaskDay[] {
+  const out: TaskDay[] = [];
+  let shown = 0;
+  for (const d of days) {
+    if (shown >= count) break;
+    out.push(d);
+    shown += d.sessions.length;
+  }
+  return out;
+}
+
 /** The hours a day's ribbon spans: at least 08:00–20:00, widened to fit the day's sessions and now. */
 export function ribbonHours(view: DayView, tz: string, now: number): [number, number] {
   let first = 8, last = 20;

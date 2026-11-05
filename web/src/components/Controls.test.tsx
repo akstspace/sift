@@ -42,6 +42,28 @@ describe("local calendar choices", () => {
     await user.click(screen.getByRole("button", { name: "Due date" })); await user.click(screen.getByRole("button", { name: "Clear date" }));
     expect(screen.getByRole("status", { name: "Stored date" }).textContent).toBe("");
   });
+  it("keeps a required date set and no later than its latest day", async () => {
+    const user = userEvent.setup(); const choose = vi.fn();
+    const { rerender } = render(<Field label="Day"><DateChoice required max="2026-01-10" value="2026-01-08" onValueChange={choose} /></Field>, { wrapper: TestProviders });
+    // The field's label and what the button shows both name it.
+    const trigger = screen.getByRole("button", { name: /^Day .*2026$/ });
+    await user.click(trigger);
+    expect(screen.queryByRole("button", { name: "Clear date" })).toBeNull();
+    // Today is past the latest day here, so it can't be picked.
+    expect((screen.getByRole("button", { name: "Today" }) as HTMLButtonElement).disabled).toBe(true);
+    const typed = screen.getByRole("textbox", { name: "Date (YYYY-MM-DD)" });
+    await user.clear(typed); await user.type(typed, "2026-01-11{Enter}");
+    expect((await screen.findByRole("alert")).textContent).toMatch(/or earlier\.$/);
+    expect(choose).not.toHaveBeenCalled();
+    await user.clear(typed); await user.type(typed, "2026-01-09{Enter}");
+    expect(choose).toHaveBeenCalledWith("2026-01-09");
+    // Choosing the selected day again in the calendar keeps it rather than clearing a required date.
+    choose.mockClear();
+    rerender(<Field label="Day"><DateChoice required max="2026-01-10" value="2026-01-09" onValueChange={choose} /></Field>);
+    await user.click(screen.getByRole("button", { name: /^Day/ }));
+    await user.click(screen.getByRole("button", { name: /January 9th, 2026/ }));
+    expect(choose.mock.calls).toEqual([["2026-01-09"]]);
+  });
   it("accepts typed civil dates without submitting the enclosing task form and rejects invalid days", async () => {
     const user = userEvent.setup(); render(<Dates initial="" />, { wrapper: TestProviders });
     expect(screen.getByText("Set date")).toBeDefined();

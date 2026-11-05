@@ -1244,6 +1244,37 @@ body:has(.drag-preview) .task-card { cursor: grabbing; }
   height: calc(100dvh - 24px);
 }
 .detail-backdrop { position: fixed; inset: 0; z-index: 50; background: #10121455; animation: none !important; }
+/* A task as a full page: the window, less the panel's margin. A reading column holds the task; its
+   properties sit beside it and stay in view. Header and footer line up with the same edges. */
+.task-detail.is-page { --page-w: 1088px; inset: 12px; width: auto; transform-origin: center top; box-shadow: 0 24px 72px -28px #0007; }
+.task-detail.is-page :is(.detail-top, .detail-actions) { padding-inline: max(28px, calc((100% - var(--page-w)) / 2)); }
+.task-detail.is-page .detail-failure { margin-inline: max(28px, calc((100% - var(--page-w)) / 2)); }
+.task-detail.is-page .detail-scroll { padding: 40px max(28px, calc((100% - var(--page-w)) / 2)) 72px; }
+/* In the panel the three parts simply stack; the page lays them out side by side. */
+.task-detail.is-page .task-page { display: grid; grid-template-columns: minmax(0, 1fr) 288px; grid-template-rows: auto 1fr; grid-template-areas: "head side" "body side"; gap: 0 64px; }
+.task-detail.is-page .task-page-head { grid-area: head; min-width: 0; }
+.task-detail.is-page .task-page-body { grid-area: body; min-width: 0; }
+.task-detail.is-page .task-page-side { grid-area: side; align-self: start; position: sticky; top: 0; min-width: 0; max-height: calc(100dvh - 24px - 66px - 72px - 40px); overflow: auto; overscroll-behavior: contain; margin: -4px -6px 0; padding: 4px 6px 16px; }
+.task-detail.is-page .task-page-side .task-properties { grid-template-columns: minmax(0, 1fr); gap: 14px; margin-bottom: 20px; }
+.task-detail.is-page .task-page-side .duplicate-box { margin-top: 4px; }
+/* Around a full page, the app behind is only a frame. */
+.detail-backdrop.is-page { background: #101214b3; }
+.task-detail.is-page .detail-title { margin-bottom: 28px; }
+.task-detail.is-page :is(.detail-title textarea, .task-title-heading) { font-size: 28px; letter-spacing: -0.025em; line-height: 1.3; }
+.task-detail.is-page .task-page-body > .description-tabs .section-heading { margin-top: 0; }
+.task-detail.is-page .task-time-feed { --time-w: 62px; --rail-w: 40px; }
+/* Prose keeps a reading measure; code, tables and images still use the whole column. */
+.task-detail.is-page .markdown > :is(p, ul, ol, blockquote, h1, h2, h3, h4):not(:has(.markdown-image)) { max-width: 72ch; }
+@media (max-width: 1100px) {
+  .task-detail.is-page .task-page { grid-template-columns: minmax(0, 1fr) 264px; column-gap: 40px; }
+}
+/* Narrower than this (TaskDetail's `roomy`), the properties stack above the task, three to a row. */
+@media (max-width: 919px) {
+  .task-detail.is-page { --page-w: 736px; }
+  .task-detail.is-page .task-page { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "head" "side" "body"; }
+  .task-detail.is-page .task-page-side { position: static; max-height: none; overflow: visible; margin: 0; padding: 0; }
+  .task-detail.is-page .task-page-side .task-properties { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 16px; }
+}
 .detail-top {
   display: flex;
   align-items: center;
@@ -1253,14 +1284,26 @@ body:has(.drag-preview) .task-card { cursor: grabbing; }
   min-height: 66px;
   border-bottom: 1px solid var(--line);
 }
-.detail-top > span {
+.detail-top-start, .detail-top-end { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.detail-top-start > span {
   font-size: 13px;
   color: var(--muted);
 }
-.detail-top > [data-slot="button"] {
+:is(.detail-top-start, .detail-top-end) > [data-slot="button"] {
   font-size: 12px;
   min-height: 32px;
 }
+/* A full page names its task here once the title has scrolled away. */
+.detail-top-task { flex: 1; min-width: 0; display: flex; }
+.detail-top-task > span {
+  min-width: 0; margin-left: 6px; padding-left: 14px; border-left: 1px solid var(--line);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 13px; font-weight: 600; color: var(--ink);
+  opacity: 0; visibility: hidden; transform: translateY(3px);
+  transition: opacity 140ms linear, transform 220ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 140ms;
+}
+.detail-top-task > .is-shown { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+@media (prefers-reduced-motion: reduce) { .detail-top-task > span { transform: none; } }
 .detail-form {
   display: flex;
   flex-direction: column;
@@ -1314,7 +1357,9 @@ body:has(.drag-preview) .task-card { cursor: grabbing; }
   color: var(--muted);
   font-weight: 500;
 }
-.detail-scroll > .field {
+/* Below the subtasks, where a task sits among others starts a section of its own. */
+.task-page-body > .parent-field { margin-top: 26px; }
+:is(.task-page-side, .task-page-body) > .field {
   margin-bottom: 20px;
 }
 .section-heading {
@@ -1506,7 +1551,9 @@ body:has(.drag-preview) .task-card { cursor: grabbing; }
   background: var(--surface);
   padding-bottom: max(14px, env(safe-area-inset-bottom));
 }
-.detail-actions > [data-slot="button"] {
+.detail-failure { margin: 0 20px 12px; max-height: 30dvh; overflow: auto; }
+.detail-actions-start, .detail-actions-end { display: flex; align-items: center; gap: 9px; }
+:is(.detail-actions-start, .detail-actions-end) > [data-slot="button"] {
   font-size: 13px;
 }
 .task-archive-notice { display: block; margin-bottom: 16px; }
@@ -3544,11 +3591,12 @@ button.tracker-status:focus-visible { outline: 2px solid var(--ring, var(--blue)
 .legend-clear { height: 28px; font-size: 12.5px; color: var(--muted); }
 
 /* The feed: one continuous rail, a station per part of day. */
-.activity-feed { --time-w: 62px; --rail-w: 40px; --rail-x: calc(var(--time-w) + var(--rail-w) / 2); --rail-line: color-mix(in oklab, var(--line) 80%, transparent); padding-bottom: 56px; }
+/* --rail-bg is what the rail sits on: the page here, the panel on a task. */
+.activity-feed { --time-w: 62px; --rail-w: 40px; --rail-x: calc(var(--time-w) + var(--rail-w) / 2); --rail-line: color-mix(in oklab, var(--line) 80%, transparent); --rail-bg: var(--ground); padding-bottom: 56px; }
 .feed-part { position: relative; }
 .feed-part-head { position: relative; display: grid; grid-template-columns: var(--time-w) var(--rail-w) minmax(0, 1fr) auto; align-items: center; height: 44px; }
-.feed-part-head::after { content: ""; grid-column: 2; justify-self: center; width: 9px; height: 9px; border-radius: 50%; background: var(--ground); box-shadow: inset 0 0 0 2px var(--control-line); position: relative; z-index: 1; }
-.feed-part-head h2 { grid-column: 3; grid-row: 1; margin: 0; padding-left: 4px; color: var(--muted); font-size: 11.5px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase; }
+.feed-part-head::after { content: ""; grid-column: 2; justify-self: center; width: 9px; height: 9px; border-radius: 50%; background: var(--rail-bg); box-shadow: inset 0 0 0 2px var(--control-line); position: relative; z-index: 1; }
+.feed-part-head :is(h2, h4) { grid-column: 3; grid-row: 1; margin: 0; padding-left: 4px; color: var(--muted); font-size: 11.5px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase; }
 .feed-part-head > span { grid-column: 4; grid-row: 1; padding-right: 10px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .feed-rows { margin: 0; padding: 0; list-style: none; }
 .feed-row { position: relative; }
@@ -3570,11 +3618,12 @@ button.tracker-status:focus-visible { outline: 2px solid var(--ring, var(--blue)
 .row-time { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; padding-top: 3px; text-align: right; }
 .row-time time, .row-time .preview-time { color: var(--ink); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .row-time > span:not(.preview-time) { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.row-rail { position: relative; z-index: 1; display: flex; justify-content: center; }
-.session-node { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: color-mix(in oklab, var(--cat) 17%, var(--surface)); color: color-mix(in oklab, var(--cat) 78%, var(--ink)); box-shadow: 0 0 0 3px var(--ground), inset 0 0 0 1px color-mix(in oklab, var(--cat) 42%, transparent); }
+/* The rail is a picture; taps go through it to the row and its links. */
+.row-rail { position: relative; z-index: 1; display: flex; justify-content: center; pointer-events: none; }
+.session-node { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: color-mix(in oklab, var(--cat) 17%, var(--surface)); color: color-mix(in oklab, var(--cat) 78%, var(--ink)); box-shadow: 0 0 0 3px var(--rail-bg, var(--ground)), inset 0 0 0 1px color-mix(in oklab, var(--cat) 42%, transparent); }
 .dark .session-node { background: color-mix(in oklab, var(--cat) 26%, var(--surface)); color: color-mix(in oklab, var(--cat) 55%, var(--ink)); }
 .row-body { min-width: 0; padding: 2px 10px 0 4px; }
-.row-body h3 { margin: 0; color: var(--ink); font-size: 15px; font-weight: 600; line-height: 1.4; text-wrap: pretty; }
+.row-body .session-title { margin: 0; color: var(--ink); font-size: 15px; font-weight: 600; line-height: 1.4; text-wrap: pretty; }
 .session-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin: 3px 0 0; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .session-category { display: inline-flex; align-items: center; gap: 6px; }
 .session-summary { margin-top: 7px; color: color-mix(in oklab, var(--ink) 80%, var(--muted)); font-size: 13.5px; line-height: 1.6; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
@@ -3596,6 +3645,10 @@ button.tracker-status:focus-visible { outline: 2px solid var(--ring, var(--blue)
 .session-row .session-task .tabler-task-icon { color: var(--muted); }
 .session-link { display: inline-flex; align-items: center; gap: 3px; min-width: 0; height: 27px; padding: 0 6px; border-radius: 8px; color: var(--muted); font-size: 12.5px; text-decoration: none; transition: color 0.16s, background-color 0.16s; }
 .session-link > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A long address is cut before its last segment, which stays in view. */
+.session-link > .session-link-label { display: flex; min-width: 0; }
+.session-link-label > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-link-label > .session-link-tail { flex: none; overflow: visible; }
 .session-link:hover { color: var(--ink); background: var(--tint); }
 .row-actions { display: flex; align-items: flex-start; gap: 2px; padding-right: 6px; opacity: 0; transition: opacity 0.16s; }
 .row-actions [data-slot="button"] { height: 28px; font-size: 12.5px; color: var(--muted); }
@@ -3701,7 +3754,7 @@ button.tracker-status:focus-visible { outline: 2px solid var(--ring, var(--blue)
 .session-editor-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 3px; margin: -3px -3px 5px; }
 .session-editor-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .session-editor textarea { max-height: min(12lh, 30dvh); overflow-wrap: anywhere; }
-.session-editor-times { grid-template-columns: 1fr 1fr 1.5fr; }
+.session-editor-times { grid-template-columns: 1.5fr 1fr 1fr; }
 
 @media (max-width: 960px) {
   .tracker-setup { grid-template-columns: minmax(0, 1fr); gap: 32px; }
@@ -3720,12 +3773,13 @@ button.tracker-status:focus-visible { outline: 2px solid var(--ring, var(--blue)
   .overview-stat strong { font-size: 18px; }
   .overview-coverage { width: 100%; margin-left: 0; }
   .activity-feed { --time-w: 46px; --rail-w: 32px; }
-  .row-body h3 { font-size: 14.5px; }
+  .row-body .session-title { font-size: 14.5px; }
   .session-row { grid-template-columns: var(--time-w) var(--rail-w) minmax(0, 1fr) auto; }
   .gap-row { grid-template-columns: var(--time-w) var(--rail-w) minmax(0, 1fr); }
   .gap-row > [data-slot="button"] { grid-column: 3; justify-self: start; margin: 8px 0 0 -6px; }
   .tracker-setup h1 { font-size: 28px; }
   .session-editor-times { grid-template-columns: 1fr 1fr; }
+  .session-editor-times > :first-child { grid-column: 1 / -1; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ribbon-gap.is-running, .gap-shimmer > span, .tracker-pulse::after { animation: none; }
@@ -3733,16 +3787,58 @@ button.tracker-status:focus-visible { outline: 2px solid var(--ring, var(--blue)
 .ribbon-now-label { position: absolute; top: 0; transform: translateX(-50%); color: var(--ink); font-weight: 650; }
 .search-choice-content.task-picker { width: 340px; }
 .session-chips > .session-link:first-child { margin-left: -6px; }
-/* Time on a task, from My activity. */
-.task-time .section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.task-time .section-heading > span { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
-.task-time-list { display: grid; gap: 2px; margin: 0 0 6px; padding: 0; list-style: none; }
-.task-time-list button { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; min-height: 34px; margin: 0 -8px; width: calc(100% + 16px); padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); font: inherit; font-size: 13px; text-align: left; cursor: pointer; transition: background-color 0.16s; }
-.task-time-list button:hover:not(:disabled) { background: var(--tint); }
-.task-time-list button:disabled { cursor: default; }
-.task-time-list button:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
-.task-time-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-time-when { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.task-time-more { margin: 0 0 4px; color: var(--muted); font-size: 12px; }
+/* Time spent on a task: My activity's rail and rows, sized for the task panel. */
+.task-time-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin: -2px 0 14px; }
+.task-time-summary strong { color: var(--ink); font-size: 18px; font-weight: 650; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.task-time-summary span { color: var(--muted); font-size: 13px; }
+.task-time-bar { display: flex; gap: 2px; height: 6px; margin: 0 0 10px; }
+.task-time-bar > span { min-width: 4px; border-radius: 1px; }
+.task-time-bar > span:first-child { border-top-left-radius: 3px; border-bottom-left-radius: 3px; }
+.task-time-bar > span:last-child { border-top-right-radius: 3px; border-bottom-right-radius: 3px; }
+.task-time-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 6px; padding: 0; list-style: none; color: var(--ink); font-size: 12.5px; }
+.task-time-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.task-time-empty { margin: -4px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.task-time-note { margin: 2px 0 6px; color: var(--muted); font-size: 12px; }
+.task-time-error { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: -4px 0 0; color: var(--muted); font-size: 13px; }
+.task-time-error > [data-slot="button"] { height: 28px; margin-left: -4px; font-size: 12.5px; }
+.task-time-feed { --time-w: 58px; --rail-w: 36px; --rail-bg: var(--surface); padding-bottom: 0; }
+.task-time-feed .row-body { padding-right: 6px; }
+.task-time-feed .session-title { font-size: 14.5px; }
+.task-time-feed .session-summary { -webkit-line-clamp: 2; font-size: 13px; }
+.task-time-feed .feed-part-head { height: 40px; }
+.task-time-feed .feed-part-head > span { padding-right: 6px; }
+.task-time-day { display: inline-flex; align-items: center; gap: 4px; margin-left: -6px; padding: 3px 6px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; transition: color 0.16s, background-color 0.16s; }
+.task-time-day svg { opacity: 0.5; transition: opacity 0.16s, transform 0.16s; }
+.task-time-day:focus-visible svg { opacity: 1; transform: translate(1px, -1px); }
+/* Only where there is hover: a tap would leave it stuck on. */
+@media (hover: hover) {
+  .task-time-day:hover { color: var(--ink); background: var(--tint); }
+  .task-time-day:hover svg { opacity: 1; transform: translate(1px, -1px); }
+}
+.task-time-day:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+/* Collapsed, the rail runs on past the last row and fades into "Show earlier". */
+.task-time-feed.is-collapsed .feed-part:last-of-type .feed-row:last-child::before { bottom: 0; height: auto; }
+.task-time-more { display: grid; grid-template-columns: var(--time-w) var(--rail-w) minmax(0, 1fr); align-items: center; min-height: 36px; }
+.task-time-more-rail { grid-column: 2; grid-row: 1; justify-self: center; align-self: start; width: 2px; height: 20px; background: repeating-linear-gradient(to bottom, var(--rail-line) 0 3px, transparent 3px 7px); }
+.task-time-feed:not(.is-collapsed) .task-time-more-rail { visibility: hidden; }
+.task-time-more > [data-slot="button"] { grid-column: 3; grid-row: 1; justify-self: start; height: 30px; margin-left: -4px; color: var(--muted); font-size: 12.5px; }
+.task-time-more > [data-slot="button"]:hover { color: var(--ink); }
+.task-time-more svg { transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+.task-time-more .is-flipped { transform: rotate(180deg); }
+.session-from { display: flex; align-items: center; gap: 5px; min-width: 0; margin: 3px 0 0; color: var(--muted); font-size: 12.5px; }
+.session-from > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-from > svg { flex: none; }
+@media (max-width: 720px) {
+  .task-time-feed { --time-w: 46px; --rail-w: 32px; }
+}
+/* On touch, the small controls in a session's row and the day links take a full 44px fingertip, centred on
+   each, without moving anything; Show more and the links below it get the room not to overlap. */
+@media (pointer: coarse) {
+  :is(.session-menu-trigger, .session-more, .task-time-day, .task-time-more > [data-slot="button"], .session-link) { position: relative; }
+  :is(.session-menu-trigger, .session-more, .task-time-day, .task-time-more > [data-slot="button"], .session-link)::after { content: ""; position: absolute; top: 50%; left: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); }
+  .session-more { margin-top: 10px; }
+  .session-more + .session-chips { margin-top: 22px; }
+  .task-time-feed .feed-part-head { height: 44px; }
+}
 .onboard-track { margin: 4px 0 6px; }
 .onboard-tracker .tracker-fields { padding: 14px 2px 4px; }

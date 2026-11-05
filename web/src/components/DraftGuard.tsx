@@ -5,7 +5,8 @@ import { Button } from "./ui/button";
 
 type Protection = { dirty: boolean; busy: boolean };
 const DraftContext = createContext<{
-  guard: (action: () => void) => void;
+  /** Runs the action, or asks first while a draft is unsaved. With a scope, only that draft counts. */
+  guard: (action: () => void, scope?: string) => void;
   protect: (id: string, state: Protection | null) => void;
 } | null>(null);
 
@@ -16,8 +17,8 @@ export function DraftGuardProvider({ children }: { children: ReactNode }) {
     if (state) protections.current.set(id, state);
     else protections.current.delete(id);
   }, []);
-  const guard = useCallback((action: () => void) => {
-    const states = [...protections.current.values()];
+  const guard = useCallback((action: () => void, scope?: string) => {
+    const states = scope === undefined ? [...protections.current.values()] : [protections.current.get(scope)].filter(s => !!s);
     if (states.some(state => state.busy)) {
       toast.info("Wait for the current operation to finish before leaving.");
     } else if (states.some(state => state.dirty)) {
@@ -54,8 +55,10 @@ export function useDraftGuard() {
   return context;
 }
 
+/** Registers a draft with the guard; returns its scope, for guarding only this draft. */
 export function useDraftProtection(dirty: boolean, busy: boolean) {
   const { protect } = useDraftGuard();
   const id = useId();
   useEffect(() => { protect(id, { dirty, busy }); return () => protect(id, null); }, [id, dirty, busy, protect]);
+  return id;
 }

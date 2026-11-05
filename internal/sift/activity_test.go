@@ -113,6 +113,35 @@ func TestActivityIsRecordedUpdatedAndProtected(t *testing.T) {
 		if _, err = s.SaveActivity(ActivityEntry{Title: "x", Start: ago(-time.Hour), End: ago(-time.Hour), TaskID: id}, 0, "user"); err == nil {
 			t.Fatal("linked to", id)
 		}
+		mine.TaskID = id
+		if _, err = s.SaveActivity(mine, mine.Revision, "user"); err == nil {
+			t.Fatal("relinked to", id)
+		}
+	}
+	// A session keeps its link when the task is merged or deleted later, and can still be edited.
+	for _, gone := range []func(Task) error{
+		func(v Task) error {
+			v.DeletedAt = now()
+			_, err := s.SaveTask(v, v.Revision, "user", "", "")
+			return err
+		},
+		func(v Task) error {
+			w := mustTask(t, s, Task{Title: "Survivor"})
+			return s.Merge(v.ID, w.ID, v.Revision, w.Revision, "user", "Same")
+		},
+	} {
+		v := mustTask(t, s, Task{Title: "Linked"})
+		kept, err := s.SaveActivity(ActivityEntry{Title: "Linked work", Start: ago(-time.Hour), End: ago(-time.Hour), TaskID: v.ID}, 0, "user")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = gone(v); err != nil {
+			t.Fatal(err)
+		}
+		kept.Title = "Linked work, renamed"
+		if kept, err = s.SaveActivity(kept, kept.Revision, "user"); err != nil || kept.TaskID != v.ID {
+			t.Fatal("couldn't edit a session on a task that's gone", kept, err)
+		}
 	}
 	if _, err = s.SaveActivity(ActivityEntry{Title: ""}, 0, "user"); err == nil {
 		t.Fatal("invalid entry saved")
@@ -156,6 +185,64 @@ func mergedTask(t *testing.T, s *Store) Task {
 		t.Fatal(err)
 	}
 	return a
+}
+
+// A task's time includes the sessions on tasks merged into it, however deep,
+// and only those; undoing a merge gives them back.
+func TestTaskActivityIncludesMergedTasks(t *testing.T) {
+	s := testService(t)
+	a, b, c := mustTask(t, s.Store, Task{Title: "CDN upload timeouts"}), mustTask(t, s.Store, Task{Title: "Flaky staging deploys"}), mustTask(t, s.Store, Task{Title: "Fix staging CI"})
+	other := mustTask(t, s.Store, Task{Title: "Unrelated"})
+	for i, task := range []Task{a, b, c, other} {
+		if _, err := s.Store.SaveActivity(ActivityEntry{Title: "On " + task.Title, Start: ago(time.Duration(i-5) * time.Hour), End: ago(time.Duration(i-5)*time.Hour + 30*time.Minute), TaskID: task.ID}, 0, "user"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	titles := func(id string) string {
+		var out []string
+		for _, e := range s.Store.TaskActivity(id) {
+			out = append(out, e.Title)
+		}
+		return strings.Join(out, "|")
+	}
+	merge := func(from, into string) {
+		t.Helper()
+		var x, y Task
+		s.Store.Get("task", from, &x)
+		s.Store.Get("task", into, &y)
+		if err := s.Store.Merge(x.ID, y.ID, x.Revision, y.Revision, "user", "Same work"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	merge(a.ID, b.ID)
+	merge(b.ID, c.ID)
+	if got := titles(c.ID); got != "On CDN upload timeouts|On Flaky staging deploys|On Fix staging CI" {
+		t.Fatal("survivor", got)
+	}
+	if got := titles(b.ID); got != "On CDN upload timeouts|On Flaky staging deploys" {
+		t.Fatal("merged in turn", got)
+	}
+	if got := titles(a.ID); got != "On CDN upload timeouts" {
+		t.Fatal("first merged", got)
+	}
+	// Each session keeps the task it was recorded on.
+	if list := s.Store.TaskActivity(c.ID); list[0].TaskID != a.ID || list[1].TaskID != b.ID {
+		t.Fatal("links rewritten", list)
+	}
+	// The CLI and Ask Sift read the same list.
+	server := httptest.NewServer(s.routes())
+	defer server.Close()
+	var out bytes.Buffer
+	if err := CLI(context.Background(), []string{"--data", cliFixtureConnection(t, server.URL), "--progress", "never", "activity", "list", "--task", c.ID}, &out); err != nil || !strings.Contains(out.String(), "On CDN upload timeouts") || strings.Contains(out.String(), "Unrelated") {
+		t.Fatal(out.String(), err)
+	}
+	events := s.Store.Events(0, c.ID, 100)
+	if err := s.Store.Undo(events[len(events)-1].ID, "user"); err != nil {
+		t.Fatal(err)
+	}
+	if got := titles(c.ID); got != "On Fix staging CI" {
+		t.Fatal("after undo", got)
+	}
 }
 
 func TestActivityRangesAndCheckedWindows(t *testing.T) {

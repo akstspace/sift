@@ -4,40 +4,29 @@ import {
   IconAlertTriangle as Warn,
   IconArrowUpRight as ArrowUpRight,
   IconCalendarSearch as CheckDay,
-  IconCheck as Check,
   IconChevronLeft as ChevronLeft,
   IconChevronRight as ChevronRight,
-  IconCircleCheckFilled as DoneIcon,
-  IconDots as Dots,
   IconHourglassEmpty as Hourglass,
-  IconLink as LinkIcon,
   IconMoonStars as Quiet,
-  IconPencil as Pencil,
   IconPlayerPause as Paused,
   IconPlus as Plus,
   IconRefresh as Refresh,
   IconSettings as Settings2,
-  IconTrash as Trash2,
-  IconUnlink as Unlink,
 } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { api } from "../api";
 import type { ActivityEntry, ActivityPage, CatalogIcon, Job, Run, Snapshot, Task } from "../types";
-import { AgentMarkdown, shortUrl } from "../components/AgentMarkdown";
-import { Busy, Button, Confirm, Empty, IconButton, TaskIcon } from "../components/shared";
-import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import { Busy, Button, Empty, IconButton } from "../components/shared";
 import { useIsMobile } from "../hooks/use-mobile";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../components/ui/command";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 import { pageMotion, selectionSpring, settle } from "../motion";
 import {
   PARTS, addDays, categoryOf, clock, coverageLabel, dayOf, dayTitle, dayView, duration, lanes, nextCheckLabel, ribbonHours, sections, spanLabel, weekOf,
   type DayView, type Gap, type Session,
 } from "./model";
-import { sourceOf } from "./sources";
 import { TrackerDialog } from "./TrackerForm";
 import { TrackerSetup } from "./TrackerSetup";
-import { SessionEditor } from "./SessionEditor";
+import { SessionEditor, blankEntry } from "./SessionEditor";
+import { SessionRow, categoryColor, grow, swatch, timeRange, useSessionActions } from "./SessionRow";
 
 const HOUR = 3_600_000, DAY = 24 * HOUR;
 
@@ -65,9 +54,6 @@ function useWeek(week: string, cursor: number, enabled: boolean) {
   }, [week, cursor, enabled]);
   return state;
 }
-
-export const categoryColor = (id: string) => `var(--cat-${categoryOf(id).id})`;
-const swatch = (id: string) => ({ "--cat": categoryColor(id) }) as CSSProperties;
 
 export function MyActivity({ snapshot, refresh, catalog, onOpenTask, onOpenRun, day: chosen, onDay }: {
   snapshot: Snapshot;
@@ -136,17 +122,7 @@ function Timeline({ snapshot, tracker, page, stale, error, day, today, now, onDa
       else toast.error(message);
     } finally { setChecking(false); }
   };
-  const save = async (entry: ActivityEntry, patch: Partial<ActivityEntry>) => {
-    try {
-      await api("/activity/" + entry.id, "PUT", { entry: { ...entry, ...patch }, expectedRevision: entry.revision });
-      await refresh();
-    } catch (e) { toast.error((e as Error).message); }
-  };
-  const remove = async (entry: ActivityEntry) => {
-    await api("/activity/" + entry.id + "?revision=" + entry.revision, "DELETE");
-    await refresh();
-    toast.success("Activity removed");
-  };
+  const { save, remove } = useSessionActions(refresh);
   const reveal = (id: string) => {
     document.getElementById("session-" + id)?.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
     setFlash(id);
@@ -199,15 +175,9 @@ function Timeline({ snapshot, tracker, page, stale, error, day, today, now, onDa
         </AnimatePresence>
       </div>
       {settings && <TrackerDialog tracker={tracker} defaultPrompt={(page || stale)?.defaultPrompt || ""} timezone={tz} onClose={() => setSettings(false)} refresh={refresh} />}
-      {editing && <SessionEditor entry={editing} day={day} tz={tz} now={now} tasks={snapshot.tasks} catalog={catalog} onClose={() => setEditing(null)} refresh={refresh} />}
+      {editing && <SessionEditor entry={editing} tz={tz} now={now} tasks={snapshot.tasks} catalog={catalog} onClose={() => setEditing(null)} refresh={refresh} />}
     </div>
   );
-}
-
-function blankEntry(day: string, today: string, now: number, tz: string): ActivityEntry {
-  const end = day === today ? now : new Date(dayView(day, tz, [], [], { now }).start + 10 * HOUR).valueOf();
-  const start = end - HOUR / 2;
-  return { id: "", start: new Date(start).toISOString(), end: new Date(end).toISOString(), title: "", summary: "", category: "code", source: "", link: "", taskId: "", sourceKey: "", actor: "user", createdAt: "", updatedAt: "", revision: 0 };
 }
 
 function TrackerStatus({ tracker, running, last, tz, now, onOpenRun }: { tracker: Job; running?: Run; last?: Run; tz: string; now: number; onOpenRun: (id: string) => void }) {
@@ -380,28 +350,12 @@ function safeZone(tz: string) {
   try { new Intl.DateTimeFormat("en-US", { timeZone: tz }); return tz; } catch { return undefined; }
 }
 
-const timeRange = (s: { from: number; to: number }, tz: string) => s.to > s.from ? `${clock(s.from, tz)}–${clock(s.to, tz)}` : clock(s.from, tz);
-
 interface FeedProps {
   view: DayView; tz: string; now: number; filter: string; hovered: string; onHover: (id: string) => void; flash: string;
   tasks: Map<string, Task>; catalog: CatalogIcon[]; tracker: Job; running?: Run; checking: boolean; reduced: boolean;
   onCheck: (gap?: Gap) => void; onOpenTask: (t: Task) => void; onOpenRun: (id: string) => void;
-  onEdit: (e: ActivityEntry) => void; onSave: (e: ActivityEntry, patch: Partial<ActivityEntry>) => Promise<void>; onRemove: (e: ActivityEntry) => Promise<void>; onAdd: () => void;
+  onEdit: (e: ActivityEntry) => void; onSave: (e: ActivityEntry, patch: Partial<ActivityEntry>) => Promise<unknown>; onRemove: (e: ActivityEntry) => Promise<void>; onAdd: () => void;
 }
-
-/**
- * A row (or part of day) that arrives while the page is open opens up from
- * nothing, so what's below flows down with it instead of being overlapped;
- * one that leaves closes the same way. What's there on arrival doesn't move.
- */
-const grow = (reduced: boolean) => reduced
-  ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 }, transition: { duration: 0.12 } }
-  : {
-    initial: { opacity: 0, height: 0, overflow: "hidden" },
-    animate: { opacity: 1, height: "auto", transitionEnd: { overflow: "visible" } },
-    exit: { opacity: 0, height: 0, overflow: "hidden", transition: { duration: 0.22, ease: [0.4, 0, 1, 1] } },
-    transition: { height: { duration: 0.38, ease: settle }, opacity: { duration: 0.26, delay: 0.08 } },
-  } as const;
 
 /** The day's sessions on a rail, most recent first, by part of day, with what's still unchecked in place and a check in progress on top. */
 function Feed(props: FeedProps) {
@@ -436,7 +390,8 @@ function Feed(props: FeedProps) {
               <AnimatePresence initial={false}>
                 {section.rows.map(row => (
                   <motion.li key={row.key} className={"feed-row is-" + row.kind} {...grow(reduced)}>
-                    {row.kind === "session" ? <SessionRow {...props} session={row.session} />
+                    {row.kind === "session" ? <SessionRow session={row.session} tz={props.tz} tasks={props.tasks} catalog={props.catalog} hovered={props.hovered} onHover={props.onHover} flash={props.flash}
+                      anchor={"session-" + row.session.id} onOpenTask={props.onOpenTask} onEdit={props.onEdit} onSave={props.onSave} onRemove={props.onRemove} />
                       : row.kind === "gap" ? <GapRow {...props} gap={row.gap} />
                         : <div className="quiet-row"><span className="row-time" /><span className="row-rail" aria-hidden /><span className="quiet-label">{duration(row.span.to - row.span.from)} with nothing recorded</span></div>}
                   </motion.li>
@@ -452,130 +407,6 @@ function Feed(props: FeedProps) {
         </div>
       )}
     </div>
-  );
-}
-
-function SessionRow({ session: s, tz, hovered, onHover, flash, tasks, catalog, onOpenTask, onEdit, onSave, onRemove }: FeedProps & { session: Session }) {
-  const source = sourceOf(s.source);
-  const Source = source.icon;
-  const category = categoryOf(s.category);
-  const task = s.taskId ? tasks.get(s.taskId) : undefined;
-  const shown = task?.mergedInto ? tasks.get(task.mergedInto) || task : task;
-  const [more, setMore] = useState(false), [overflows, setOverflows] = useState(false);
-  const summary = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = summary.current;
-    if (el) setOverflows(el.scrollHeight > el.clientHeight + 2);
-  }, [s.summary]);
-  const [linking, setLinking] = useState(false);
-  // The picker opens once the menu has closed, so the menu's focus return doesn't dismiss it.
-  const pickAfterMenu = useRef(false);
-  return (
-    <article id={"session-" + s.id} className={"session-row" + (hovered === s.id ? " is-hovered" : "") + (flash === s.id ? " is-flash" : "")}
-      style={swatch(s.category)} onMouseEnter={() => onHover(s.id)} onMouseLeave={() => onHover("")} aria-labelledby={"session-title-" + s.id}>
-      <div className="row-time">
-        <time dateTime={s.start}>{clock(s.from, tz)}</time>
-        {s.to > s.from && <span>{duration(s.to - s.from)}</span>}
-      </div>
-      <div className="row-rail" aria-hidden><span className="session-node"><Source size={14} aria-hidden /></span></div>
-      <div className="row-body">
-        <h3 id={"session-title-" + s.id}>{s.title}</h3>
-        <p className="session-meta">
-          <span className="session-category"><span className="legend-swatch" aria-hidden />{category.label}</span>
-          {s.source && <><span aria-hidden>·</span><span>{source.label}</span></>}
-          <span aria-hidden>·</span><span>{timeRange(s, tz)}</span>
-          {s.actor === "user" ? <><span aria-hidden>·</span><span>Added by you</span></> : s.edited ? <><span aria-hidden>·</span><span>Edited</span></> : null}
-        </p>
-        {s.summary && (
-          <div className={"session-summary" + (more ? " is-open" : "")} ref={summary}>
-            <AgentMarkdown text={s.summary} />
-          </div>
-        )}
-        {s.summary && (overflows || more) && (
-          <button type="button" className="session-more" aria-expanded={more} onClick={() => setMore(m => !m)}>{more ? "Show less" : "Show more"}</button>
-        )}
-        {(shown || s.link) && (
-          <div className="session-chips">
-            {shown && (
-              <button type="button" className={"session-task" + (shown.status === "done" ? " is-done" : "") + (shown.deletedAt ? " is-deleted" : "")} onClick={() => onOpenTask(shown)} disabled={!!shown.deletedAt}>
-                {shown.status === "done" ? <DoneIcon size={14} aria-hidden className="session-task-done" /> : <TaskIcon id={shown.icon} catalog={catalog} size={14} />}
-                <span>{shown.deletedAt ? "Deleted task" : shown.title}</span>
-              </button>
-            )}
-            {s.link && (
-              <a className="session-link" href={s.link} target="_blank" rel="noreferrer noopener" title={s.link}>
-                <span>{shortUrl(s.link)}</span><ArrowUpRight size={12} aria-hidden />
-              </a>
-            )}
-          </div>
-        )}
-      </div>
-      <div className="row-actions">
-        {!task && (
-          <TaskPicker open={linking} onOpenChange={setLinking} tasks={tasks} catalog={catalog} onPick={t => onSave(s, { taskId: t.id })}>
-            <Button variant="ghost" size="sm" className="session-link-task"><LinkIcon size={14} aria-hidden />Link task</Button>
-          </TaskPicker>
-        )}
-        <Confirm title="Remove this activity" destructive description={`“${s.title}” is removed from My activity. Sift won’t add it back unless a check finds new evidence for it.`} action={() => onRemove(s)}>
-          {confirm => (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="session-menu-trigger" aria-label={"More for " + s.title}><Dots size={16} aria-hidden /></Button></DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="session-menu" onCloseAutoFocus={e => {
-                if (!pickAfterMenu.current) return;
-                pickAfterMenu.current = false;
-                e.preventDefault();
-                setLinking(true);
-              }}>
-                <DropdownMenuItem onSelect={() => onEdit(s)}><Pencil size={15} aria-hidden />Edit</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => { pickAfterMenu.current = true; }}><LinkIcon size={15} aria-hidden />{task ? "Change task" : "Link to a task"}</DropdownMenuItem>
-                {task && <DropdownMenuItem onSelect={() => onSave(s, { taskId: "" })}><Unlink size={15} aria-hidden />Unlink task</DropdownMenuItem>}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive" onSelect={() => setTimeout(confirm)}><Trash2 size={15} aria-hidden />Remove</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </Confirm>
-        {task && (
-          <TaskPicker anchor current={task.id} open={linking} onOpenChange={setLinking} tasks={tasks} catalog={catalog} onPick={t => t.id !== task.id && onSave(s, { taskId: t.id })}>
-            <span className="session-picker-anchor" />
-          </TaskPicker>
-        )}
-      </div>
-    </article>
-  );
-}
-
-/** Search the person's open tasks (and today's finished ones) to link. */
-function TaskPicker({ open, onOpenChange, tasks, catalog, onPick, children, anchor, current = "" }: {
-  open: boolean; onOpenChange: (v: boolean) => void; tasks: Map<string, Task>; catalog: CatalogIcon[]; onPick: (t: Task) => void; children: React.ReactNode; anchor?: boolean; current?: string;
-}) {
-  const [query, setQuery] = useState("");
-  const list = useMemo(() => [...tasks.values()].filter(t => !t.deletedAt && !t.mergedInto && !t.archivedAt)
-    .sort((a, b) => Number(a.status === "done") - Number(b.status === "done") || Number(b.today) - Number(a.today) || b.updatedAt.localeCompare(a.updatedAt)), [tasks]);
-  const q = query.trim().toLocaleLowerCase();
-  const matches = (q ? list.filter(t => t.title.toLocaleLowerCase().includes(q)) : list).slice(0, 60);
-  return (
-    <Popover open={open} onOpenChange={v => { onOpenChange(v); if (!v) setQuery(""); }}>
-      {anchor ? <PopoverAnchor asChild>{children}</PopoverAnchor> : <PopoverTrigger asChild>{children}</PopoverTrigger>}
-      <PopoverContent className="search-choice-content task-picker" align="end" sideOffset={6}>
-        <Command shouldFilter={false} label={current ? "Change the linked task" : "Link to a task"} defaultValue={current || undefined}>
-          <CommandInput aria-label="Search tasks" placeholder="Search tasks…" value={query} onValueChange={setQuery} />
-          <CommandList aria-label="Tasks">
-            <CommandEmpty>No matching tasks.</CommandEmpty>
-            <CommandGroup>
-              {matches.map(t => (
-                <CommandItem key={t.id} value={t.id} onSelect={() => { onPick(t); onOpenChange(false); setQuery(""); }}>
-                  {t.status === "done" ? <DoneIcon size={15} aria-hidden className="session-task-done" /> : <TaskIcon id={t.icon} catalog={catalog} size={15} />}
-                  <span className="task-picker-title">{t.title}</span>
-                  {t.id === current ? <span className="task-picker-current"><Check size={14} aria-hidden />Linked</span>
-                    : t.today && t.status !== "done" && <span className="task-picker-today">Today</span>}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
   );
 }
 

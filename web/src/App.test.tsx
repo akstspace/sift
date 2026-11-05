@@ -277,6 +277,25 @@ describe("workspace integration", () => {
     await user.keyboard("{Escape}"); await user.click(screen.getByRole("link", { name: "Sift home" })); expect(await screen.findByRole("heading", { name: "Today", level: 1 })).toBeDefined();
     fireEvent.keyDown(window, { key: "?" }); expect(screen.getByRole("dialog", { name: "A little orientation" })).toBeDefined();
   });
+  it("opens tasks as a full page once chosen, and keeps that choice", async () => {
+    const { user, unmount } = await mount(snapshotFixture({ tasks: [taskFixture({ id: "tsk_page", title: "Plan the launch", today: true })] }));
+    await user.click(screen.getByText("Plan the launch"));
+    const sheet = await screen.findByRole("dialog", { name: "Task details" });
+    expect(sheet.className).not.toContain("is-page");
+    await user.click(within(sheet).getByRole("button", { name: "Open as full page" }));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Task details" }).className).toContain("is-page"));
+    expect(localStorage.getItem("sift.taskView")).toBe("page");
+    expect(within(screen.getByRole("dialog", { name: "Task details" })).getByRole("group", { name: "Properties" })).toBeDefined();
+    unmount();
+    // A task opened later, after a reload, opens as a full page too.
+    const again = await mount(snapshotFixture({ tasks: [taskFixture({ id: "tsk_page", title: "Plan the launch", today: true })] }));
+    await again.user.click(screen.getByText("Plan the launch"));
+    const page = await screen.findByRole("dialog", { name: "Task details" });
+    expect(page.className).toContain("is-page");
+    await again.user.click(within(page).getByRole("button", { name: "Open as side panel" }));
+    await waitFor(() => expect(localStorage.getItem("sift.taskView")).toBe("panel"));
+    expect(screen.getByRole("dialog", { name: "Task details" }).className).not.toContain("is-page");
+  });
   it("persists sidebar/theme choices and marks only real notifications as read", async () => {
     const { user } = await mount(snapshotFixture({ notifications: [{ id: "n", title: "Backup evidence", message: "Local only", at: "2026-01-01T00:00:00Z", read: false }] }));
     await user.click(screen.getByRole("button", { name: "Collapse sidebar" })); expect(localStorage.getItem("sift.sidebar")).toBe("collapsed");
