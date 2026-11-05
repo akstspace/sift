@@ -260,24 +260,26 @@ reviews, messages, meetings, documents, shell history, and Sift itself.
   original back. Checks run at 12:30, 17:30 and 22:00 in your Sift timezone by
   default, up to six times a day. *Fill in today so far* makes the first check
   cover today from midnight; otherwise tracking starts now. Change any of this,
-  pause it, or turn it off later from the settings button on My activity.
+  pause it, or turn it off later from the settings button on My activity; you
+  can also ask Sift, or use `sift activity tracker`, to change or pause it.
 - **What a check covers.** The tracker is one scheduled Pi job, listed on
-  Agents but changed only from My activity. Each run covers the time since
-  tracking started that no earlier check has covered, reaching back at most
-  seven days; stretches under a minute are ignored. Pi records work sessions
-  (grouped blocks, not single events) with `sift activity add`, links them to
-  your tasks when it is clear, and moves a task's status when it finds clear
-  evidence, with a reason. When the run succeeds, Sift marks its windows
-  checked. A failed, cancelled or interrupted run marks nothing, so the next
-  check covers that time again. *Check now* runs straight away.
+  Agents and changed from My activity or `sift activity tracker`. Each run
+  covers the time since tracking started that no earlier check has covered,
+  reaching back at most seven days; stretches under a minute are ignored. Pi
+  records work sessions (grouped blocks, not single events) with `sift
+  activity add`, links them to your tasks when it is clear, and moves a task's
+  status when it finds clear evidence, with a reason. When the run succeeds,
+  Sift marks its windows checked. A failed, cancelled or interrupted run marks
+  nothing, so the next check covers that time again. *Check now* runs straight
+  away.
 - **Older days.** Days before tracking began, or more than a week ago, are left
   alone by scheduled checks. Open the day and choose *Check this day* (or
   *Check now* beside an unchecked stretch) to look back, at most a week at a
   time. Time that was already checked is not checked again.
 - **Your corrections stay.** You can add sessions, edit them, link or unlink a
   task, or remove them. Checks never change or remove a session you added or
-  edited. Only you can set up or change tracking; agents and the chat are
-  refused.
+  edited. Agents and Ask Sift change tracking only when you ask, and only you
+  can turn it off.
 - **In a task.** A task's details show *Worked on*: its total time and latest
   sessions, each opening its day.
 - **Privacy.** Pi reads these sources with your computer account's permissions
@@ -289,6 +291,11 @@ From the CLI: `sift activity list --from DATE --to DATE` (or `--task ID`),
 `sift activity add --start TIME --end TIME --title TEXT`, `sift activity update
 ID --revision N`, `sift activity delete ID --revision N`, and `sift activity
 check`. Times are RFC 3339 or local `YYYY-MM-DDTHH:MM` in your Sift timezone.
+`sift activity tracker` shows tracking; with `--prompt TEXT` (or `--prompt-file
+PATH`, `--default-prompt`), `--schedule "daily 12:30"` (repeatable), `--model
+PROVIDER/MODEL` (or `--default-model`), `--timezone`, `--pause` or `--resume`
+it sets tracking up (`--fill-today` covers today so far) or, with `--revision
+N`, changes it, keeping whatever you leave out.
 
 ## Updates and installation
 

@@ -231,11 +231,11 @@ export interface Section { part: Part; rows: Row[]; total: number }
 /** Quiet checked stretches at least this long get a marker on the rail. */
 const QUIET = 75 * MINUTE;
 
-/** The feed: sessions and unchecked stretches in time order, split by part of day, with long quiet stretches marked. */
+/** The feed, most recent first: sessions and unchecked stretches split by part of day, with long quiet stretches marked. */
 export function sections(view: DayView, tz: string): Section[] {
   const items: Exclude<Row, { kind: "quiet" }>[] = [
     ...view.sessions.map(s => ({ kind: "session" as const, key: s.id, at: Math.max(s.from, view.start), session: s })),
-    // A check in progress isn't part of the day's story; the feed shows it after the sessions it's adding.
+    // A check in progress isn't part of the day's story; the feed shows it on top, above the sessions it's adding.
     ...view.gaps.filter(g => g.kind !== "running").map(g => ({ kind: "gap" as const, key: `gap:${g.kind}:${g.from}`, at: g.from, gap: g })),
   ].sort((a, b) => a.at - b.at || (a.kind === "gap" ? 1 : -1));
   const rows: Row[] = [];
@@ -249,8 +249,9 @@ export function sections(view: DayView, tz: string): Section[] {
     const to = item.kind === "session" ? Math.min(item.session.to, view.end) : item.gap.to;
     reach = Math.max(reach, to);
   }
+  // Built oldest first so quiet stretches fall between the right rows, then read newest first.
   const out: Section[] = [];
-  for (const row of rows) {
+  for (const row of rows.reverse()) {
     const part = partOf(minuteOf(row.at, tz));
     let section = out[out.length - 1];
     if (!section || section.part !== part) out.push(section = { part, rows: [], total: 0 });
@@ -286,9 +287,9 @@ export function coverageLabel(view: DayView, tz: string, now: number): string {
   return "Partly checked";
 }
 
-/** A stretch of the day in words: "Whole day", "09:00–now", "18:30–midnight", "09:00–12:30". */
-export function spanLabel(span: Span, view: DayView, tz: string, now: number): string {
+/** A stretch of the day in words: "Whole day", "09:00–now", "18:30–midnight", "09:00–12:30". Time before tracking began ends at a clock time, never "now". */
+export function spanLabel(span: Span & { kind?: GapKind }, view: DayView, tz: string, now: number): string {
   if (span.from <= view.start && span.to >= view.end) return "Whole day";
-  const end = span.to >= now - MINUTE ? "now" : span.to >= view.end ? "midnight" : clock(span.to, tz);
+  const end = span.to >= now - MINUTE && span.kind !== "older" ? "now" : span.to >= view.end ? "midnight" : clock(span.to, tz);
   return `${clock(span.from, tz)}–${end}`;
 }

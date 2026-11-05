@@ -160,7 +160,7 @@ describe("setting up My activity", () => {
 });
 
 describe("the timeline", () => {
-  it("shows the day at a glance and every session in order", async () => {
+  it("shows the day at a glance and every session, most recent first", async () => {
     const { props, user } = mount();
     await ready();
     expect(within(screen.getByRole("region", { name: "Day at a glance" })).getByText("2h 50m")).toBeDefined();
@@ -170,7 +170,7 @@ describe("the timeline", () => {
     const stats = screen.getByRole("region", { name: "Day at a glance" });
     expect(within(stats).getByText("5").nextSibling?.textContent).toBe("sessions");
     expect(within(stats).getByText("4").nextSibling?.textContent).toBe("tasks");
-    expect(screen.getAllByRole("article").map(a => a.getAttribute("aria-labelledby"))).toEqual(["a5", "a1", "a2", "a3", "a4"].map(id => "session-title-" + id));
+    expect(screen.getAllByRole("article").map(a => a.getAttribute("aria-labelledby"))).toEqual(["a4", "a3", "a2", "a1", "a5"].map(id => "session-title-" + id));
     expect(screen.getByRole("region", { name: "Morning" })).toBeDefined();
     expect(within(row("Platform standup")).getByText("Added by you")).toBeDefined();
     expect(within(row("Replied to Maya")).getByText("Edited")).toBeDefined();

@@ -73,7 +73,7 @@ type arguments struct {
 
 func parseArgs(args []string) arguments {
 	a := arguments{Flags: map[string]string{}, Lists: map[string][]string{}}
-	bools := map[string]bool{"today": true, "enabled": true, "json": true, "check": true, "yes": true, "quiet": true, "wait": true}
+	bools := map[string]bool{"today": true, "enabled": true, "json": true, "check": true, "yes": true, "quiet": true, "wait": true, "default-prompt": true, "default-model": true, "pause": true, "resume": true, "fill-today": true}
 	for i := 0; i < len(args); i++ {
 		v := args[i]
 		if strings.HasPrefix(v, "--") {
@@ -217,7 +217,17 @@ activity add --start TIME --end TIME --title TEXT [--summary TEXT]
           [--category KIND] [--source NAME] [--link URL] [--task ID] [--source-key KEY]
 activity update ID --revision N [same options]   Change one session
 activity delete ID --revision N   Remove a session you recorded
-activity check                    Check for new activity now
+activity check [--from TIME --to TIME]
+                                  Run the activity tracker now over the time not
+                                  checked yet, or one window of at most a week
+activity tracker                  Show activity tracking: prompt, schedules, model,
+                                  next check, and the time not checked yet
+activity tracker [--revision N] [--prompt TEXT | --prompt-file PATH | --default-prompt]
+          [--schedule SPEC]... [--model PROVIDER/MODEL | --default-model]
+          [--thinking LEVEL] [--timezone ZONE] [--pause | --resume] [--fill-today]
+                                  Set up tracking (--fill-today covers today so far),
+                                  or change it with its revision; options left out
+                                  stay as they are. Schedules use the jobs forms.
   TIME is RFC 3339 such as 2026-11-04T09:30:00+05:30. KIND is code, review,
   meeting, message, writing, research, admin, or other. A repeated source key
   updates the existing session instead of adding another.
@@ -657,9 +667,11 @@ func (c *localClient) activityRequest(ctx context.Context, sub, id string, a arg
 		return "GET", "/api/activity?" + q.Encode(), nil, nil
 	case "check":
 		return "POST", "/api/activity/check", map[string]string{"from": a.Flags["from"], "to": a.Flags["to"]}, nil
+	case "tracker":
+		return c.trackerRequest(ctx, a)
 	case "add", "update", "delete":
 	default:
-		return "", "", nil, invalid("Use sift activity list, add, update, delete, or check")
+		return "", "", nil, invalid("Use sift activity list, add, update, delete, check, or tracker")
 	}
 	if sub != "add" && id == "" {
 		return "", "", nil, invalid("An activity ID is required: sift activity %s ID --revision N", sub)
@@ -692,4 +704,79 @@ func (c *localClient) activityRequest(ctx context.Context, sub, id string, a arg
 		return "POST", "/api/activity", body, nil
 	}
 	return "PUT", "/api/activity/" + url.PathEscape(id), body, nil
+}
+
+// trackerRequest builds sift activity tracker. With no options it shows the
+// tracker; with options it sets tracking up from Sift's defaults, or changes
+// the tracker at --revision N, keeping whatever the options leave out.
+func (c *localClient) trackerRequest(ctx context.Context, a arguments) (method, path string, body any, err error) {
+	options := []string{"prompt", "prompt-file", "default-prompt", "schedule", "model", "default-model", "thinking", "timezone", "pause", "resume", "fill-today"}
+	if !slices.ContainsFunc(options, func(k string) bool { _, ok := a.Flags[k]; return ok }) {
+		return "GET", "/api/activity/tracker", nil, nil
+	}
+	b, err := c.request(ctx, "GET", "/api/activity/tracker", nil)
+	if err != nil {
+		return "", "", nil, err
+	}
+	var view trackerView
+	if err = json.Unmarshal(b, &view); err != nil {
+		return "", "", nil, err
+	}
+	in := TrackerInput{Prompt: view.DefaultPrompt, Enabled: true, Backfill: a.Flags["fill-today"] != ""}
+	for _, at := range view.DefaultTimes {
+		in.Schedules = append(in.Schedules, JobSchedule{Type: "daily", Schedule: at})
+	}
+	if j := view.Tracker; j != nil {
+		if in.Revision, err = strconv.Atoi(a.Flags["revision"]); err != nil || in.Revision < 1 {
+			return "", "", nil, invalid("--revision N is required to change tracking; read it with sift activity tracker")
+		}
+		if in.Backfill {
+			return "", "", nil, invalid("--fill-today only applies when setting up tracking; use sift activity check --from TIME --to TIME for earlier time")
+		}
+		in.Prompt, in.Schedules, in.Provider, in.Model, in.Thinking, in.Timezone, in.Enabled = j.Prompt, j.Schedules, j.Provider, j.Model, j.Thinking, j.Timezone, j.Enabled
+	}
+	switch {
+	case a.Flags["prompt-file"] != "":
+		text, err := os.ReadFile(a.Flags["prompt-file"])
+		if err != nil {
+			return "", "", nil, err
+		}
+		in.Prompt = string(text)
+	case a.Flags["default-prompt"] != "":
+		in.Prompt = view.DefaultPrompt
+	case a.Flags["prompt"] != "":
+		in.Prompt = a.Flags["prompt"]
+	}
+	if specs := a.Lists["schedule"]; len(specs) > 0 {
+		in.Schedules = nil
+		for _, spec := range specs {
+			sc, err := parseScheduleSpec(spec)
+			if err != nil {
+				return "", "", nil, err
+			}
+			in.Schedules = append(in.Schedules, sc)
+		}
+	}
+	if v := a.Flags["model"]; v != "" {
+		provider, model, ok := strings.Cut(v, "/")
+		if !ok || provider == "" || model == "" {
+			return "", "", nil, invalid("Use --model PROVIDER/MODEL, as sift models list shows, or --default-model for Pi's default")
+		}
+		in.Provider, in.Model = provider, model
+	} else if a.Flags["default-model"] != "" {
+		in.Provider, in.Model, in.Thinking = "", "", ""
+	}
+	if v, ok := a.Flags["thinking"]; ok {
+		in.Thinking = v
+	}
+	if v := a.Flags["timezone"]; v != "" {
+		in.Timezone = v
+	}
+	if a.Flags["pause"] != "" && a.Flags["resume"] != "" {
+		return "", "", nil, invalid("Use --pause or --resume, not both")
+	}
+	if a.Flags["pause"] != "" || a.Flags["resume"] != "" {
+		in.Enabled = a.Flags["resume"] != ""
+	}
+	return "PUT", "/api/activity/tracker", in, nil
 }

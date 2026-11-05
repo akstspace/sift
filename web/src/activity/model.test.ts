@@ -157,7 +157,7 @@ describe("a day", () => {
 
 describe("the feed", () => {
   const now = t("2026-11-04T21:00:00Z");
-  it("orders sessions and open time by part of day, marking long quiet stretches", () => {
+  it("lists sessions and open time most recent first by part of day, marking long quiet stretches", () => {
     const entries = [
       entry("2026-11-04T03:00:00Z", "2026-11-04T03:30:00Z"),
       entry("2026-11-04T09:00:00Z", "2026-11-04T10:00:00Z"),
@@ -169,21 +169,21 @@ describe("the feed", () => {
     });
     const parts = sections(view, "UTC");
     expect(parts.map(p => [p.part, p.rows.map(r => r.kind), p.total / MIN])).toEqual([
-      ["night", ["session", "quiet"], 30],
-      ["morning", ["session", "quiet"], 60],
-      ["afternoon", ["session"], 30],
       ["evening", ["session"], 360],
+      ["afternoon", ["session"], 30],
+      ["morning", ["quiet", "session"], 60],
+      ["night", ["quiet", "session"], 30],
     ]);
     // The check in progress isn't in a part of the day; the feed shows it on its own.
     expect(view.gaps.map(g => g.kind)).toEqual(["running"]);
   });
-  it("puts a session before open time that starts with it", () => {
+  it("puts open time above a session that starts with it", () => {
     const view = dayView("2026-11-04", "UTC", [entry("2026-11-04T12:00:00Z", "2026-11-04T12:30:00Z")], [check("2026-11-04T00:00:00Z", "2026-11-04T12:00:00Z")], { now });
-    expect(sections(view, "UTC").flatMap(p => p.rows.map(r => r.kind))).toEqual(["session", "gap"]);
+    expect(sections(view, "UTC").flatMap(p => p.rows.map(r => r.kind))).toEqual(["gap", "session"]);
   });
   it("doesn't call unchecked time quiet", () => {
     const view = dayView("2026-11-04", "UTC", [entry("2026-11-04T08:00:00Z", "2026-11-04T08:30:00Z"), entry("2026-11-04T11:00:00Z", "2026-11-04T11:30:00Z")], [], { now });
-    expect(sections(view, "UTC").flatMap(p => p.rows.map(r => r.kind))).toEqual(["gap", "session", "session"]);
+    expect(sections(view, "UTC").flatMap(p => p.rows.map(r => r.kind))).toEqual(["session", "session", "gap"]);
   });
 });
 
@@ -205,6 +205,8 @@ describe("spans in words", () => {
     expect(spanLabel({ from: yesterday.start, to: yesterday.end }, yesterday, "UTC", now)).toBe("Whole day");
     expect(spanLabel({ from: t("2026-11-03T18:30:00Z"), to: yesterday.end }, yesterday, "UTC", now)).toBe(c("2026-11-03T18:30:00Z") + "–midnight");
     expect(spanLabel({ from: t("2026-11-04T09:00:00Z"), to: now - 30_000 }, today, "UTC", now)).toBe(c("2026-11-04T09:00:00Z") + "–now");
+    // Tracking that began a moment ago: the time before it ends at that moment.
+    expect(spanLabel({ from: today.start, to: now - 30_000, kind: "older" }, today, "UTC", now)).toBe(`${c("2026-11-04T00:00:00Z")}–${clock(now - 30_000, "UTC")}`);
     expect(spanLabel({ from: t("2026-11-04T09:00:00Z"), to: t("2026-11-04T10:00:00Z") }, today, "UTC", now)).toBe(`${c("2026-11-04T09:00:00Z")}–${c("2026-11-04T10:00:00Z")}`);
   });
 });

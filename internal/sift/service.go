@@ -186,9 +186,6 @@ func (s *Service) saveJob(j Job, expected int, actor string, tracker bool) (Job,
 	found := j.ID != "" && s.Store.Get("job", j.ID, &old)
 	if !tracker {
 		j.Kind, j.Since = old.Kind, old.Since
-		if j.Kind == trackerKind && actor != "user" {
-			return j, &APIError{Status: 403, Message: "Only the person using Sift can change activity tracking"}
-		}
 	} else if other, ok := s.Store.Tracker(); ok && other.ID != j.ID {
 		return j, conflict("Activity tracking is already set up")
 	}
@@ -441,7 +438,7 @@ func (s *Service) SaveSettings(in Settings) error {
 func (s *Service) Schema() map[string]any {
 	return map[string]any{
 		"version":  1,
-		"commands": []string{"tasks list/search/get/add/update/tree/duplicates/merge/comments/comment", "columns list", "projects list/add/update", "tags list/add/update", "icons search", "images upload", "jobs list/add/update/run/reset", "jobs run ID --wait", "activity list/add/update/delete/check", "runs list/get/cancel/watch", "models list", "history", "undo", "backup", "update", "serve"},
+		"commands": []string{"tasks list/search/get/add/update/tree/duplicates/merge/comments/comment", "columns list", "projects list/add/update", "tags list/add/update", "icons search", "images upload", "jobs list/add/update/run/reset", "jobs run ID --wait", "activity list/add/update/delete/check/tracker", "runs list/get/cancel/watch", "models list", "history", "undo", "backup", "update", "serve"},
 		"task":     Task{}, "job": Job{},
 		"activity": map[string]any{
 			"entry":      ActivityEntry{},
@@ -449,7 +446,7 @@ func (s *Service) Schema() map[string]any {
 			"list":       "activity list [--from DATE] [--to DATE] [--task ID]: sessions overlapping the range (default today), the checked windows, and what is not checked yet",
 			"times":      "RFC 3339 with an offset, such as 2026-11-04T09:30:00+05:30; dates are YYYY-MM-DD in the person's timezone",
 			"dedupe":     "a new session whose sourceKey matches an existing one updates it",
-			"tracker":    "the job with kind activity records sessions three times a day for the windows Sift gives it; only the person sets it up",
+			"tracker":    "the job with kind activity records sessions three times a day for the windows Sift gives it; sift activity tracker shows it, and sets it up or changes its prompt, schedules, model or pause when the person asks",
 		},
 		"jobSchedules": map[string]any{
 			"field":    "schedules: [{type, schedule, weekdays}], up to 20; the job runs at whichever comes next, and schedules due in the same minute start one run",

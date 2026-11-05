@@ -402,7 +402,7 @@ const grow = (reduced: boolean) => reduced
     transition: { height: { duration: 0.38, ease: settle }, opacity: { duration: 0.26, delay: 0.08 } },
   } as const;
 
-/** The day's sessions in order on a rail, by part of day, with what's still unchecked in place. */
+/** The day's sessions on a rail, most recent first, by part of day, with what's still unchecked in place and a check in progress on top. */
 function Feed(props: FeedProps) {
   const { view, tz, filter, reduced } = props;
   const parts = sections(view, tz).map(s => ({ ...s, rows: s.rows.filter(r => !filter || r.kind !== "session" || categoryOf(r.session.category).id === filter) })).filter(s => s.rows.length);
@@ -417,32 +417,34 @@ function Feed(props: FeedProps) {
         </Empty>
       ) : fullyQuiet ? (
         <Empty icon={Quiet} title="A quiet day">Sift checked this day and didn’t find anything you worked on.</Empty>
-      ) : <AnimatePresence initial={false}>{parts.map(section => (
-        <motion.section key={section.part} className="feed-part" aria-label={PARTS[section.part]} {...grow(reduced)}>
-          <header className="feed-part-head">
-            <h2>{PARTS[section.part]}</h2>
-            {section.total > 0 && <span>{duration(section.total)}</span>}
-          </header>
-          <ol className="feed-rows">
-            <AnimatePresence initial={false}>
-              {section.rows.map(row => (
-                <motion.li key={row.key} className={"feed-row is-" + row.kind} {...grow(reduced)}>
-                  {row.kind === "session" ? <SessionRow {...props} session={row.session} />
-                    : row.kind === "gap" ? <GapRow {...props} gap={row.gap} />
-                      : <div className="quiet-row"><span className="row-time" /><span className="row-rail" aria-hidden /><span className="quiet-label">{duration(row.span.to - row.span.from)} with nothing recorded</span></div>}
-                </motion.li>
-              ))}
-            </AnimatePresence>
-          </ol>
-        </motion.section>
-      ))}</AnimatePresence>}
-      <AnimatePresence initial={false}>
-        {reading.length > 0 && (
-          <motion.ol key="reading" className="feed-rows feed-reading" {...grow(reduced)}>
-            {reading.map(g => <li key={"reading:" + g.from} className="feed-row is-gap"><GapRow {...props} gap={g} /></li>)}
-          </motion.ol>
-        )}
-      </AnimatePresence>
+      ) : <>
+        <AnimatePresence initial={false}>
+          {reading.length > 0 && (
+            <motion.ol key="reading" className="feed-rows feed-reading" {...grow(reduced)}>
+              {reading.map(g => <li key={"reading:" + g.from} className="feed-row is-gap"><GapRow {...props} gap={g} /></li>)}
+            </motion.ol>
+          )}
+        </AnimatePresence>
+        <AnimatePresence initial={false}>{parts.map(section => (
+          <motion.section key={section.part} className="feed-part" aria-label={PARTS[section.part]} {...grow(reduced)}>
+            <header className="feed-part-head">
+              <h2>{PARTS[section.part]}</h2>
+              {section.total > 0 && <span>{duration(section.total)}</span>}
+            </header>
+            <ol className="feed-rows">
+              <AnimatePresence initial={false}>
+                {section.rows.map(row => (
+                  <motion.li key={row.key} className={"feed-row is-" + row.kind} {...grow(reduced)}>
+                    {row.kind === "session" ? <SessionRow {...props} session={row.session} />
+                      : row.kind === "gap" ? <GapRow {...props} gap={row.gap} />
+                        : <div className="quiet-row"><span className="row-time" /><span className="row-rail" aria-hidden /><span className="quiet-label">{duration(row.span.to - row.span.from)} with nothing recorded</span></div>}
+                  </motion.li>
+                ))}
+              </AnimatePresence>
+            </ol>
+          </motion.section>
+        ))}</AnimatePresence>
+      </>}
       {!view.future && !view.beforeTracking && (
         <div className="feed-foot">
           <Button variant="ghost" size="sm" onClick={props.onAdd}><Plus size={14} aria-hidden />Add activity</Button>

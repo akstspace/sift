@@ -20,6 +20,15 @@ type activityPage struct {
 	LookbackDays  int      `json:"lookbackDays"`
 }
 
+// trackerView is what sift activity tracker shows: the tracker (null before
+// setup), the time it hasn't checked yet, and the defaults setup starts from.
+type trackerView struct {
+	Tracker       *Job             `json:"tracker"`
+	Gaps          []ActivityWindow `json:"gaps"`
+	DefaultPrompt string           `json:"defaultPrompt"`
+	DefaultTimes  []string         `json:"defaultTimes"`
+}
+
 // activityRange reads from and to: RFC 3339 instants or YYYY-MM-DD days in
 // the person's timezone (to includes that whole day). Both default to today.
 func (s *Service) activityRange(r *http.Request) (time.Time, time.Time, error) {
@@ -110,16 +119,19 @@ func (s *Service) activityRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, map[string]bool{"deleted": true})
 	})
-	mux.HandleFunc("PUT /api/activity/tracker", func(w http.ResponseWriter, r *http.Request) {
-		if actorOf(r) != "user" {
-			apiError(w, &APIError{Status: 403, Message: "Only the person using Sift can set up activity tracking"})
-			return
+	mux.HandleFunc("GET /api/activity/tracker", func(w http.ResponseWriter, r *http.Request) {
+		view := trackerView{Gaps: []ActivityWindow{}, DefaultPrompt: DefaultActivityPrompt, DefaultTimes: DefaultTrackerTimes}
+		if j, ok := s.Store.Tracker(); ok {
+			view.Tracker, view.Gaps = &j, s.Store.trackerGaps(j, time.Now())
 		}
+		writeJSON(w, 200, view)
+	})
+	mux.HandleFunc("PUT /api/activity/tracker", func(w http.ResponseWriter, r *http.Request) {
 		var in TrackerInput
 		if !decodeBody(w, r, &in) {
 			return
 		}
-		out, err := s.SaveTracker(in)
+		out, err := s.SaveTracker(in, actorOf(r))
 		if err != nil {
 			apiError(w, err)
 			return

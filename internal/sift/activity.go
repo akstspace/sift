@@ -419,8 +419,9 @@ type TrackerInput struct {
 	Revision int  `json:"revision"`
 }
 
-// SaveTracker sets up or changes the activity tracker.
-func (s *Service) SaveTracker(in TrackerInput) (Job, error) {
+// SaveTracker sets up or changes the activity tracker, for the person in the
+// app or an agent through sift activity tracker.
+func (s *Service) SaveTracker(in TrackerInput, actor string) (Job, error) {
 	if trim(in.Prompt) == "" {
 		in.Prompt = DefaultActivityPrompt
 	}
@@ -448,7 +449,7 @@ func (s *Service) SaveTracker(in TrackerInput) (Job, error) {
 		}
 		j.Since = stamp(since)
 	}
-	return s.saveJob(j, j.Revision, "user", true)
+	return s.saveJob(j, j.Revision, actor, true)
 }
 
 // CheckActivity starts a tracker check now: of everything not yet checked,

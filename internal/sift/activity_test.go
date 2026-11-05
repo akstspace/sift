@@ -221,7 +221,7 @@ func TestActivityRangesAndCheckedWindows(t *testing.T) {
 func TestTrackerSetupAndJobRules(t *testing.T) {
 	s := testService(t)
 	daily := []JobSchedule{{Type: "daily", Schedule: "12:30"}, {Type: "daily", Schedule: "17:30"}, {Type: "daily", Schedule: "22:00"}}
-	j, err := s.SaveTracker(TrackerInput{Schedules: daily, Timezone: "Asia/Kolkata", Enabled: true, Backfill: true})
+	j, err := s.SaveTracker(TrackerInput{Schedules: daily, Timezone: "Asia/Kolkata", Enabled: true, Backfill: true}, "user")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,24 +234,26 @@ func TestTrackerSetupAndJobRules(t *testing.T) {
 		t.Fatal("tracker not found")
 	}
 	// Changing it keeps when tracking started, and needs the revision.
-	j2, err := s.SaveTracker(TrackerInput{Prompt: "Only GitHub", Schedules: daily[:1], Revision: j.Revision})
+	j2, err := s.SaveTracker(TrackerInput{Prompt: "Only GitHub", Schedules: daily[:1], Revision: j.Revision}, "user")
 	if err != nil || j2.Prompt != "Only GitHub" || j2.Since != j.Since || j2.Timezone != "Asia/Kolkata" || j2.Enabled {
 		t.Fatal(j2, err)
 	}
-	if _, err = s.SaveTracker(TrackerInput{Schedules: daily, Revision: j.Revision}); apiStatus(err) != 409 {
+	if _, err = s.SaveTracker(TrackerInput{Schedules: daily, Revision: j.Revision}, "user"); apiStatus(err) != 409 {
 		t.Fatal("stale tracker saved", err)
 	}
-	// Ordinary job saves can't make or retarget a tracker, and agents can't change it.
+	// Ordinary job saves can't make or retarget a tracker.
 	other, err := s.SaveJob(Job{Name: "Other", Prompt: "x", Kind: trackerKind, Since: "2020-01-01T00:00:00Z", Schedules: daily[:1], Timezone: "UTC"}, 0, "user")
 	if err != nil || other.Kind != "" || other.Since != "" {
 		t.Fatal("job save set kind", other, err)
 	}
-	j2.Prompt = "Read everything"
-	if _, err = s.SaveJob(j2, j2.Revision, "local-agent"); apiStatus(err) != 403 {
-		t.Fatal("agent changed the tracker", err)
+	// An agent can change it like any job; it stays the tracker, tracking from the same start.
+	j2.Prompt = "Only my commits"
+	j3, err := s.SaveJob(j2, j2.Revision, "local-agent")
+	if err != nil || j3.Kind != trackerKind || j3.Since != j.Since || j3.Prompt != "Only my commits" {
+		t.Fatal("agent's tracker change", j3, err)
 	}
-	j2.Name = "Renamed"
-	if saved, err := s.SaveJob(j2, j2.Revision, "user"); err != nil || saved.Kind != trackerKind || saved.Since != j.Since {
+	j3.Name = "Renamed"
+	if saved, err := s.SaveJob(j3, j3.Revision, "user"); err != nil || saved.Kind != trackerKind || saved.Since != j.Since {
 		t.Fatal("person's job save lost tracking", saved, err)
 	}
 	if _, err = s.saveJob(Job{Name: "Second", Prompt: "x", Kind: trackerKind, Schedules: daily[:1], Timezone: "UTC"}, 0, "user", true); apiStatus(err) != 409 {
@@ -260,11 +262,11 @@ func TestTrackerSetupAndJobRules(t *testing.T) {
 
 	// Without backfill, tracking starts now; an invalid timezone falls back to the workspace's.
 	s2 := testService(t)
-	fresh, err := s2.SaveTracker(TrackerInput{Schedules: daily, Timezone: "Mars/Olympus"})
+	fresh, err := s2.SaveTracker(TrackerInput{Schedules: daily, Timezone: "Mars/Olympus"}, "user")
 	if err == nil {
 		t.Fatal("invalid timezone saved", fresh)
 	}
-	fresh, err = s2.SaveTracker(TrackerInput{Schedules: daily})
+	fresh, err = s2.SaveTracker(TrackerInput{Schedules: daily}, "user")
 	since, _ = time.Parse(time.RFC3339, fresh.Since)
 	if err != nil || time.Since(since) > time.Minute {
 		t.Fatal(fresh, err)
@@ -279,7 +281,7 @@ func TestTrackerChecksCoverTheMissingWindows(t *testing.T) {
 	if _, err := s.CheckActivity(nil); apiStatus(err) != 404 {
 		t.Fatal("check without a tracker", err)
 	}
-	j, err := s.SaveTracker(TrackerInput{Prompt: "scenario:failed", Schedules: []JobSchedule{{Type: "daily", Schedule: "12:30"}}, Timezone: "UTC", Provider: "fixture", Model: "fixture-model", Backfill: true})
+	j, err := s.SaveTracker(TrackerInput{Prompt: "scenario:failed", Schedules: []JobSchedule{{Type: "daily", Schedule: "12:30"}}, Timezone: "UTC", Provider: "fixture", Model: "fixture-model", Backfill: true}, "user")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +305,7 @@ func TestTrackerChecksCoverTheMissingWindows(t *testing.T) {
 	}
 	// A successful check covers its window, so the next one has nothing to do.
 	j, _ = s.Store.Tracker()
-	j, err = s.SaveTracker(TrackerInput{Prompt: "scenario:success", Schedules: j.Schedules, Provider: "fixture", Model: "fixture-model", Revision: j.Revision})
+	j, err = s.SaveTracker(TrackerInput{Prompt: "scenario:success", Schedules: j.Schedules, Provider: "fixture", Model: "fixture-model", Revision: j.Revision}, "user")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +389,7 @@ func TestTrackerChecksCoverTheMissingWindows(t *testing.T) {
 func TestTrackerCheckThatCannotRecordItsWindowFails(t *testing.T) {
 	fixturePi(t)
 	s := testService(t)
-	if _, err := s.SaveTracker(TrackerInput{Prompt: "scenario:success", Schedules: []JobSchedule{{Type: "daily", Schedule: "12:30"}}, Timezone: "UTC", Provider: "fixture", Model: "fixture-model", Backfill: true}); err != nil {
+	if _, err := s.SaveTracker(TrackerInput{Prompt: "scenario:success", Schedules: []JobSchedule{{Type: "daily", Schedule: "12:30"}}, Timezone: "UTC", Provider: "fixture", Model: "fixture-model", Backfill: true}, "user"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Store.DB.Exec(`CREATE TRIGGER refuse_checks BEFORE INSERT ON objects WHEN NEW.kind='activity-check' BEGIN SELECT RAISE(ABORT,'disk full'); END`); err != nil {
@@ -466,9 +468,13 @@ func TestActivityAPI(t *testing.T) {
 	routeRequest(t, h, "DELETE", "/api/activity/"+e.ID+"?revision=2", nil, 409, true)
 	routeRequest(t, h, "DELETE", "/api/activity/"+e.ID+"?revision=2", nil, 200, false)
 
-	// Only the person sets up tracking; checks report what's wrong.
+	// Tracking is read and set up here; checks report what's wrong.
+	var view trackerView
+	json.Unmarshal(routeRequest(t, h, "GET", "/api/activity/tracker", nil, 200, true), &view)
+	if view.Tracker != nil || view.DefaultPrompt != DefaultActivityPrompt || len(view.DefaultTimes) != 3 {
+		t.Fatal(view)
+	}
 	daily := []JobSchedule{{Type: "daily", Schedule: "12:30"}}
-	routeRequest(t, h, "PUT", "/api/activity/tracker", TrackerInput{Schedules: daily}, 403, true)
 	routeRequest(t, h, "PUT", "/api/activity/tracker", "{", 400, false)
 	routeRequest(t, h, "PUT", "/api/activity/tracker", TrackerInput{}, 400, false)
 	routeRequest(t, h, "POST", "/api/activity/check", map[string]string{}, 404, false)
@@ -480,6 +486,15 @@ func TestActivityAPI(t *testing.T) {
 	json.Unmarshal(routeRequest(t, h, "GET", "/api/activity", nil, 200, false), &page)
 	if page.Tracker == nil || page.Tracker.ID != tracker.ID {
 		t.Fatal(page.Tracker)
+	}
+	json.Unmarshal(routeRequest(t, h, "GET", "/api/activity/tracker", nil, 200, true), &view)
+	if view.Tracker == nil || view.Tracker.ID != tracker.ID || view.Gaps == nil {
+		t.Fatal(view)
+	}
+	// An agent can change it when the person asks.
+	json.Unmarshal(routeRequest(t, h, "PUT", "/api/activity/tracker", TrackerInput{Prompt: "Only my commits", Schedules: daily, Timezone: "UTC", Revision: tracker.Revision}, 200, true), &tracker)
+	if tracker.Prompt != "Only my commits" || tracker.Revision != 2 {
+		t.Fatal(tracker)
 	}
 	routeRequest(t, h, "POST", "/api/activity/check", "{", 400, false)
 	routeRequest(t, h, "POST", "/api/activity/check", map[string]string{"from": "x"}, 400, false)
@@ -522,6 +537,46 @@ func TestActivityCLI(t *testing.T) {
 	}
 	if _, err = cli("activity", "delete", e.ID, "--revision", "2"); err != nil {
 		t.Fatal(err)
+	}
+
+	// Tracking is shown, set up and changed from the CLI; options left out stay as they are.
+	tracker := func(args ...string) (trackerView, Job, error) {
+		var view trackerView
+		var j Job
+		out, err := cli(append([]string{"activity", "tracker"}, args...)...)
+		if err == nil && len(args) == 0 {
+			err = json.Unmarshal([]byte(out), &view)
+		} else if err == nil {
+			err = json.Unmarshal([]byte(out), &j)
+		}
+		return view, j, err
+	}
+	if view, _, err := tracker(); err != nil || view.Tracker != nil || view.DefaultPrompt != DefaultActivityPrompt {
+		t.Fatal(view, err)
+	}
+	_, j, err := tracker("--fill-today", "--schedule", "daily 09:00", "--schedule", "weekdays 18:00 mon-fri", "--model", "fixture/fixture-model", "--timezone", "UTC")
+	if err != nil || j.Kind != trackerKind || j.Prompt != DefaultActivityPrompt || len(j.Schedules) != 2 || j.Provider != "fixture" || !j.Enabled || !strings.HasSuffix(j.Since, "T00:00:00Z") {
+		t.Fatal(j, err)
+	}
+	if _, j, err = tracker("--prompt", "Only my commits", "--pause", "--revision", "1"); err != nil || j.Prompt != "Only my commits" || j.Enabled || len(j.Schedules) != 2 || j.Provider != "fixture" || j.Revision != 2 {
+		t.Fatal(j, err)
+	}
+	file := filepath.Join(t.TempDir(), "prompt.md")
+	os.WriteFile(file, []byte("Commits and calendar only"), 0600)
+	if _, j, err = tracker("--prompt-file", file, "--resume", "--default-model", "--revision", "2"); err != nil || j.Prompt != "Commits and calendar only" || !j.Enabled || j.Provider != "" || j.Model != "" {
+		t.Fatal(j, err)
+	}
+	if _, j, err = tracker("--default-prompt", "--thinking", "low", "--revision", "3"); err != nil || j.Prompt != DefaultActivityPrompt || j.Thinking != "low" {
+		t.Fatal(j, err)
+	}
+	view, _, err := tracker()
+	if err != nil || view.Tracker == nil || view.Tracker.Revision != 4 {
+		t.Fatal(view, err)
+	}
+	for _, bad := range [][]string{{"--pause"}, {"--pause", "--revision", "x"}, {"--fill-today", "--revision", "4"}, {"--pause", "--resume", "--revision", "4"}, {"--model", "fixture", "--revision", "4"}, {"--schedule", "hourly", "--revision", "4"}, {"--prompt-file", file + ".missing", "--revision", "4"}, {"--pause", "--revision", "1"}} {
+		if _, _, err = tracker(bad...); err == nil {
+			t.Fatal("accepted", bad)
+		}
 	}
 	for _, bad := range [][]string{{"activity", "nap"}, {"activity", "update"}, {"activity", "delete", e.ID}, {"activity", "update", e.ID, "--revision", "x"}, {"activity", "update", "act_missing", "--revision", "1"}} {
 		if _, err = cli(bad...); err == nil {
