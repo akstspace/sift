@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-var Version = "0.1.13-dev"
+var Version = "0.1.14-dev"
 
 type ChecklistItem struct {
 	ID    string `json:"id"`
