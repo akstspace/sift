@@ -14,7 +14,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -55,6 +54,8 @@ func Serve(ctx context.Context, dir, address string) error {
 		return err
 	}
 	defer s.Close()
+	// Read the login shell's PATH now, so the first chat doesn't wait on it.
+	go shellPath()
 	l, err := net.Listen("tcp", address)
 	if err != nil {
 		return fmt.Errorf("Cannot listen on %s: %w. Choose another port with sift serve --port NUMBER", address, err)
@@ -211,7 +212,7 @@ func (s *Service) routes() http.Handler {
 		defer release()
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, PiPath(), "update")
+		cmd := piCommand(ctx, "update")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			apiError(w, fmt.Errorf("Pi update failed: %w: %s", err, out))

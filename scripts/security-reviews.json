@@ -187,10 +187,6 @@
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
     "reason": "Intentional HTTP-only loopback service binds exclusively 127.0.0.1 and rejects foreign Host, Origin and cross-site requests. Secure would break the supported 127.0.0.1 HTTP session. Cookie is HttpOnly/SameSiteStrict; writes additionally require X-Sift-Request. Re-review if non-loopback or TLS serving is added."
   },
-  "internal/sift/http.go:go.lang.security.audit.dangerous-exec-command:0f34817650ee0c99860ed2e93b311b98693f623e40bc921828a3858e3018d640": {
-    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
-    "reason": "Explicit authenticated Pi update endpoint executes the locally configured Pi path with the single literal update argument and a five-minute deadline. No shell or request-supplied executable/argv; maintenance prevents concurrent runs. It is never called automatically."
-  },
   "internal/sift/http.go:go.lang.security.audit.xss.no-direct-write-to-responsewriter:4b103ecce18093ef1b91820809e0dee445bf62b1f203e435c20e55be9a652937": {
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
     "reason": "Authenticated image endpoint writes locally uploaded bytes with allowlisted PNG/JPEG/GIF/WebP MIME (fallback octet-stream), nosniff and cache headers. inspectImage rejects SVG/HTML and validates raster dimensions; no remote import or HTML response is produced."
@@ -199,13 +195,17 @@
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
     "reason": "An owner-only directory deliberately occupies connection.json in t.TempDir to force startup failure. This is malformed filesystem test input, not an insecure file permission."
   },
-  "internal/sift/pi.go:go.lang.security.audit.dangerous-exec-command:c58d1a50269b794044ff4646761339fdd22143e98c232a2912f1b9c1cc539ce0": {
+  "internal/sift/toolpath.go:go.lang.security.audit.dangerous-exec-command:7175c4a671adf7442980e8e282081a2392428b2d0950dfee92bc3e3d27a76b20": {
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
-    "reason": "Runs the user's local Pi (explicit SIFT_PI/PATH/home discovery) directly with --mode rpc and caller-constructed argv. Task prompts travel as JSON over stdin, not command text; no shell is used. Selecting a different executable requires local configuration control."
+    "reason": "Asks the person's own login shell ($SHELL, used only when it is an absolute path) for its PATH with one fixed literal command string; no request, task, or prompt value reaches the executable or argv. It runs at most once per process with a five-second deadline, and its whole process group is killed at the deadline. Pointing SHELL elsewhere requires control of Sift's own environment, which already allows running anything as the person."
   },
-  "internal/sift/pi.go:go.lang.security.audit.dangerous-exec-command:69a3bf2faa7bd1ade6b26a8f5058fb48d61661d6c7703ac6a35dc0447048677c": {
+  "internal/sift/toolpath.go:go.lang.security.audit.dangerous-exec-command:01ff10fd60c36eeb33a6dd2b32c1868174c2ba0b6b3512c9b188f49b6ffd352c": {
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
-    "reason": "Discovery reads the locally selected Pi's version using a literal --version argument and bounded context. No request value becomes executable or shell input."
+    "reason": "Runs the user's local Pi (explicit SIFT_PI, else the first executable pi on the login-shell, process, and usual install-folder search path) directly, without a shell. Callers pass literal or caller-constructed argv (--mode rpc with session flags, --version, update) under their own deadlines; task prompts travel as JSON over stdin, not command text. The child's PATH is that same absolute-only search path. Selecting a different executable requires control of local configuration or the person's own PATH folders."
+  },
+  "internal/sift/toolpath_test.go:go.lang.correctness.permissions.incorrect-default-permission:db387b326055dedeb5b2936f877aac904d1952bf0f6e4d1fdc787a14cd7a1d0e": {
+    "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",
+    "reason": "Creates folders for fake shell, node, and Pi scripts under t.TempDir. Directory traversal requires owner execute; 0700 grants no group/other access, and 0600 would make the fixture unusable."
   },
   "internal/sift/pi_paths_test.go:go.lang.correctness.permissions.incorrect-default-permission:347adeef6e39d9e3793278f1719ae5368bc3dcc87b797a9406f1d42fa2729512": {
     "disposition": "not-a-vulnerability", "reviewBefore": "2027-02-01",

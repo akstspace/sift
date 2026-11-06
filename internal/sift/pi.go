@@ -36,21 +36,14 @@ func PiPath() string {
 	if v := os.Getenv("SIFT_PI"); v != "" {
 		return v
 	}
-	p, err := exec.LookPath("pi")
-	if err == nil {
+	if p := findTool("pi", toolPath()); p != "" {
 		return p
-	}
-	home, _ := os.UserHomeDir()
-	for _, p := range []string{filepath.Join(home, ".bun/bin/pi"), filepath.Join(home, ".local/bin/pi"), "/opt/homebrew/bin/pi", "/usr/local/bin/pi"} {
-		if _, e := os.Stat(p); e == nil {
-			return p
-		}
 	}
 	return "pi"
 }
 func StartPi(dir string, args ...string) (*Pi, error) {
 	p := &Pi{pending: map[string]chan map[string]any{}, events: make(chan map[string]any, 1024), done: make(chan struct{}), stop: make(chan struct{}), errDone: make(chan struct{})}
-	p.cmd = exec.Command(PiPath(), append([]string{"--mode", "rpc"}, args...)...)
+	p.cmd = piCommand(context.Background(), append([]string{"--mode", "rpc"}, args...)...)
 	p.cmd.Dir = dir
 	p.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	in, err := p.cmd.StdinPipe()
@@ -241,7 +234,7 @@ func ProbePi(ctx context.Context, provider, model string) (map[string]any, error
 	}
 	vctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	version, _ := exec.CommandContext(vctx, PiPath(), "--version").Output()
+	version, _ := piCommand(vctx, "--version").Output()
 	return map[string]any{"connected": true, "version": trim(string(version)), "path": PiPath(), "state": state, "models": models["models"], "thinking": thinking}, nil
 }
 func (s *Service) executeRun(ctx context.Context, job Job, run Run) {
