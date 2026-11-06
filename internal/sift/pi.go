@@ -157,9 +157,16 @@ func (p *Pi) Call(ctx context.Context, command map[string]any) (map[string]any, 
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-p.done:
-		return nil, fmt.Errorf("Pi exited before responding")
+		return nil, errPiExited
 	}
 }
+
+// runCommandTimeout bounds how long Pi may take to answer each command that
+// sets up a scheduled run.
+var runCommandTimeout = 30 * time.Second
+
+// errPiExited means the Pi process ended before answering a command.
+var errPiExited = errors.New("Pi exited before responding")
 func (p *Pi) Close() {
 	p.closeOnce.Do(func() {
 		close(p.stop)
@@ -246,25 +253,19 @@ func (s *Service) executeRun(ctx context.Context, job Job, run Run) {
 		return
 	}
 	defer p.Close()
-	rpcctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	rpcctx, cancel := context.WithTimeout(ctx, runCommandTimeout)
 	defer cancel()
 	if job.Provider != "" && job.Model != "" {
 		_, err = p.Call(rpcctx, map[string]any{"type": "set_model", "provider": job.Provider, "modelId": job.Model})
 		if err != nil {
-			if s.finishCancelled(ctx, run) {
-				return
-			}
-			s.finishRun(run, "action-needed", err.Error(), "")
+			s.commandFailed(ctx, p, run, err)
 			return
 		}
 	}
 	if job.Thinking != "" {
 		_, err = p.Call(rpcctx, map[string]any{"type": "set_thinking_level", "level": job.Thinking})
 		if err != nil {
-			if s.finishCancelled(ctx, run) {
-				return
-			}
-			s.finishRun(run, "action-needed", err.Error(), "")
+			s.commandFailed(ctx, p, run, err)
 			return
 		}
 	}
@@ -319,10 +320,7 @@ func (s *Service) executeRun(ctx context.Context, job Job, run Run) {
 	}
 	accepted, err := p.Call(rpcctx, command)
 	if err != nil {
-		if s.finishCancelled(ctx, run) {
-			return
-		}
-		s.finishRun(run, "action-needed", err.Error(), "")
+		s.commandFailed(ctx, p, run, err)
 		return
 	}
 	if accepted["disposition"] == "handled" {
@@ -428,6 +426,23 @@ func (s *Service) executeRun(ctx context.Context, job Job, run Run) {
 		}
 	}
 }
+// commandFailed records a run whose Pi command failed. Pi refusing it (a
+// model it can't use, a prompt it won't take) needs the person, so the
+// schedule pauses. Pi stopping or not answering in time is a failure the next
+// scheduled run retries, so the schedule keeps going.
+func (s *Service) commandFailed(ctx context.Context, p *Pi, run Run, err error) {
+	if s.finishCancelled(ctx, run) {
+		return
+	}
+	status, message := "action-needed", err.Error()
+	if errors.Is(err, errPiExited) || errors.Is(err, context.DeadlineExceeded) {
+		status = "failed"
+	}
+	if tail := p.stderrTail(); tail != "" && errors.Is(err, errPiExited) {
+		message += " (" + tail + ")"
+	}
+	s.finishRun(run, status, message, "")
+}
 func (s *Service) finishCancelled(ctx context.Context, run Run) bool {
 	if ctx.Err() == nil {
 		return false
@@ -458,7 +473,7 @@ func (s *Service) finishRun(run Run, status, message, text string) {
 		s.runMu.Lock()
 		var j Job
 		if s.Store.Get("job", run.JobID, &j) {
-			j.Enabled, j.Pending = false, false
+			j.Enabled, j.Pending, j.PausedReason = false, false, message
 			j.Revision++
 			_ = s.Store.Put("job", j.ID, j, "system", "Paused until human attention: "+message)
 		}

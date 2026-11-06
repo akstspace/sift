@@ -35,6 +35,16 @@ if os.getenv("PI_CHAT_RECORD_ARGS"):
 if os.getenv("PI_CHAT_FAIL_START"):
     print("Pi fixture refused to start", file=sys.stderr, flush=True)
     sys.exit(3)
+# PI_CHAT_ONCE=slow:MARKER or exit:MARKER misbehaves on the first start only:
+# answering too late to open the session, or stopping before answering.
+if os.getenv("PI_CHAT_ONCE"):
+    mode, marker = os.environ["PI_CHAT_ONCE"].split(":", 1)
+    if not os.path.exists(marker):
+        open(marker, "w").close()
+        if mode == "exit":
+            print("Pi fixture stopped once", file=sys.stderr, flush=True)
+            sys.exit(3)
+        time.sleep(1.5)
 
 path = os.path.join(session_dir, session_id + ".json") if session_dir and session_id else ""
 messages, broken = [], False

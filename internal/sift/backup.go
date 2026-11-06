@@ -488,6 +488,9 @@ func (s *Service) restore(ctx context.Context, b []byte) error {
 			v := jsonMap(raw)
 			rid := v["id"].(string)
 			if k == "job" {
+				if v["enabled"] == true {
+					v["pausedReason"] = "Paused after restoring a backup, so nothing runs twice. Resume it when you're ready."
+				}
 				v["enabled"], v["pending"] = false, false
 				v["revision"] = int(v["revision"].(float64)) + 1
 			}

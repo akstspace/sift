@@ -206,6 +206,12 @@ func (s *Service) saveJob(j Job, expected int, actor string, tracker bool) (Job,
 		j.Revision = 1
 		j.Pending = false
 	}
+	// Sift's reason for a pause stands until the schedule is resumed; no one
+	// else sets it.
+	j.PausedReason = ""
+	if found && !j.Enabled {
+		j.PausedReason = old.PausedReason
+	}
 	j.NextRun = next.UTC().Format(time.RFC3339Nano)
 	return j, s.Store.Put("job", j.ID, j, actor, "Save scheduled job")
 }

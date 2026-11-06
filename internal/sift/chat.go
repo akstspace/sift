@@ -125,7 +125,8 @@ You also have the person's normal Pi tools and command-line tools; use them when
 }
 
 // ensure returns the running Pi, starting one for the current session if
-// needed. If Pi can't open that session, a new session replaces it.
+// needed. If Pi can't open that session, a new session replaces it; a Pi that
+// was only slow to answer gets the same session again instead.
 func (c *Chat) ensure(ctx context.Context) (*Pi, error) {
 	c.startMu.Lock()
 	defer c.startMu.Unlock()
@@ -144,16 +145,21 @@ func (c *Chat) ensure(ctx context.Context) (*Pi, error) {
 	ctx = context.WithoutCancel(ctx)
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
-		if session == "" || attempt > 0 {
+		if session == "" || (attempt > 0 && !errors.Is(lastErr, context.DeadlineExceeded)) {
 			session = newID("chat_")
 		}
 		p, err := c.start(ctx, session)
 		if err == nil {
+			replaced := previous != "" && previous != session
+			// A session that never got a message has no file, so nothing was lost.
+			kept := replaced && c.hasConversation(previous)
 			c.mu.Lock()
 			c.pi, c.starting, c.cfg.SessionID, c.running, c.lastUse = p, nil, session, false, time.Now()
-			if previous != "" && previous != session {
-				c.notice = "Pi couldn't open the previous conversation, so this is a new one. The old one is kept in Sift's data folder."
+			if replaced {
 				log.Printf("Chat session %s could not be opened (%v); started %s", previous, lastErr, session)
+			}
+			if kept {
+				c.notice = "Pi couldn't open the previous conversation, so this is a new one. The old one is kept in Sift's data folder."
 			}
 			c.mu.Unlock()
 			c.save()
@@ -170,6 +176,16 @@ func (c *Chat) ensure(ctx context.Context) (*Pi, error) {
 
 var errPiUnavailable = errors.New("local Pi is unavailable")
 
+// chatStartTimeout bounds how long Pi may take to open a conversation.
+var chatStartTimeout = 20 * time.Second
+
+// hasConversation reports whether Pi wrote a file for the session, which it
+// does once the conversation has a message.
+func (c *Chat) hasConversation(session string) bool {
+	found, _ := filepath.Glob(filepath.Join(c.dir, "sessions", "chat", "*"+session+"*"))
+	return len(found) > 0
+}
+
 func (c *Chat) start(ctx context.Context, session string) (*Pi, error) {
 	home, _ := os.UserHomeDir()
 	p, err := StartPi(home, "--session-dir", filepath.Join(c.dir, "sessions", "chat"), "--session-id", session, "--name", "Sift chat", "--append-system-prompt", c.guide())
@@ -181,7 +197,7 @@ func (c *Chat) start(ctx context.Context, session string) (*Pi, error) {
 	c.starting, c.dialogs, c.queue, c.statuses = p, map[string]chatDialog{}, nil, map[string]string{}
 	c.mu.Unlock()
 	go c.pump(p)
-	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	cctx, cancel := context.WithTimeout(ctx, chatStartTimeout)
 	defer cancel()
 	_, err = p.Call(cctx, map[string]any{"type": "get_state"})
 	if err == nil {
@@ -195,7 +211,7 @@ func (c *Chat) start(ctx context.Context, session string) (*Pi, error) {
 		c.mu.Unlock()
 		p.Close()
 		if tail != "" {
-			err = fmt.Errorf("%v (%s)", err, tail)
+			err = fmt.Errorf("%w (%s)", err, tail)
 		}
 		return nil, fmt.Errorf("Pi couldn't open the chat session: %w", err)
 	}

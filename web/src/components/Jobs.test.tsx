@@ -56,6 +56,11 @@ describe("scheduled jobs without model prompts", () => {
     expect(screen.getByText("Paused")).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Open My activity" }));
     expect(screen.getByRole("button", { name: "Set up your first job" })).toBeDefined();
+    expect(screen.queryByText(/Paused by Sift/)).toBeNull();
+    rerender(<Jobs {...props} snapshot={snapshotFixture({ jobs: [{ ...tracker, enabled: false, pausedReason: "Pi: Model unavailable" }, jobFixture({ enabled: false, pausedReason: "Pi has no configured model" }), jobFixture({ id: "job_mine", name: "Mine", enabled: false })] })} onOpenActivity={undefined} />);
+    expect(screen.getByText("Paused by Sift: Pi: Model unavailable")).toBeDefined();
+    expect(screen.getByText("Paused by Sift: Pi has no configured model")).toBeDefined();
+    expect(screen.getByText("Schedule paused")).toBeDefined();
   });
   it("prevents duplicate job saves while persistence is pending", async () => {
     const { user, props } = mount(); await user.click(screen.getByRole("button", { name: "Morning planning" })); await screen.findByRole("button", { name: "Refresh models" });

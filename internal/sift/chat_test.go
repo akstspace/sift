@@ -187,6 +187,45 @@ func TestChatReplacesASessionPiCannotOpen(t *testing.T) {
 	}
 }
 
+func TestChatKeepsTheConversationWhenPiIsOnlySlowToStart(t *testing.T) {
+	chatPi(t)
+	previous := chatStartTimeout
+	chatStartTimeout = 500 * time.Millisecond
+	t.Cleanup(func() { chatStartTimeout = previous })
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "sessions", "chat"), 0700)
+	os.WriteFile(filepath.Join(dir, "chat.json"), encode(chatConfig{SessionID: "chat_kept"}), 0600)
+	os.WriteFile(filepath.Join(dir, "sessions", "chat", "chat_kept.json"), encode([]map[string]any{{"role": "user", "content": "earlier"}}), 0600)
+	t.Setenv("PI_CHAT_ONCE", "slow:"+filepath.Join(t.TempDir(), "started"))
+	s, err := NewService(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	state := chatState(t, s.routes(), "")
+	if state["available"] != true || state["sessionId"] != "chat_kept" || state["notice"] != nil || len(state["messages"].([]any)) != 1 {
+		t.Fatalf("a slow start replaced the conversation: %v", state)
+	}
+}
+
+func TestChatReplacesAnUnusedSessionWithoutANotice(t *testing.T) {
+	// "New chat" saves a session Pi hasn't written yet. If Pi then stops
+	// once, the replacement loses nothing, so it shouldn't claim it did.
+	chatPi(t)
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "chat.json"), encode(chatConfig{SessionID: "chat_unused"}), 0600)
+	t.Setenv("PI_CHAT_ONCE", "exit:"+filepath.Join(t.TempDir(), "started"))
+	s, err := NewService(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	state := chatState(t, s.routes(), "")
+	if state["available"] != true || state["sessionId"] == "chat_unused" || state["notice"] != nil {
+		t.Fatalf("unused session replacement: %v", state)
+	}
+}
+
 func TestChatWhenPiIsMissingOrFailsToStart(t *testing.T) {
 	t.Setenv("SIFT_PI", filepath.Join(t.TempDir(), "missing-pi"))
 	s := testService(t)

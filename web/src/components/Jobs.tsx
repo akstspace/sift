@@ -125,6 +125,7 @@ export function Jobs({
               <span className={"status-badge " + (tracker.enabled ? "enabled" : "paused")}>{tracker.enabled ? "Scheduled" : "Paused"}</span>
             </div>
             <p>Writes down what you worked on, {describeDailyTimes(tracker.schedules)}.</p>
+            {!tracker.enabled && tracker.pausedReason && <small>Paused by Sift: {tracker.pausedReason}</small>}
           </div>
           <div className="job-controls">
             <Button variant="outline" onClick={() => onOpenActivity?.()}>Open My activity</Button>
@@ -185,7 +186,9 @@ export function Jobs({
                   <small>
                     {j.enabled
                       ? "Next: " + friendlyTime(j.nextRun)
-                      : "Schedule paused"}
+                      : j.pausedReason
+                        ? "Paused by Sift: " + j.pausedReason
+                        : "Schedule paused"}
                     {last && (
                       <>
                         {" "}

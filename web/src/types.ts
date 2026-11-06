@@ -8,7 +8,9 @@ export interface Entity { id:string;name:string;color:string;archived:boolean;ic
 export interface JobSchedule { type:string;schedule:string;weekdays?:number[] }
 export interface Job { id:string;name:string;prompt:string;directory:string;provider:string;model:string;thinking:string;schedules:JobSchedule[];timezone:string;enabled:boolean;timeoutMinutes:number;sessionId:string;nextRun:string;lastRun:string;pending:boolean;includeImages:boolean;revision:number;
   /** "activity" for the activity tracker; Since is when tracking started. */
-  kind?:string;since?:string }
+  kind?:string;since?:string;
+  /** Why Sift paused the schedule itself; absent when the person paused it. */
+  pausedReason?:string }
 export interface Run { id:string;jobId:string;jobName:string;status:string;startedAt:string;endedAt:string;summary:string;error:string;model:string;sessionId:string;job:Job;
   /** The stretches of time an activity check looks through. */
   windows?:ActivityWindow[] }

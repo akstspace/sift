@@ -10,6 +10,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -75,7 +76,7 @@ func TestBackupRestoreHistoryMemoryLogsAndRequests(t *testing.T) {
 	}
 	var job Job
 	s.Store.Get("job", j.ID, &job)
-	if job.Enabled || job.Pending || job.SessionID != j.SessionID {
+	if job.Enabled || job.Pending || job.SessionID != j.SessionID || !strings.Contains(job.PausedReason, "restoring a backup") {
 		t.Fatal("memory or paused-state lost", job)
 	}
 	b, _ := os.ReadFile(session)

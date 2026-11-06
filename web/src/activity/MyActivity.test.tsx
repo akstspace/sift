@@ -361,6 +361,10 @@ describe("checking", () => {
     expect(screen.getByText("Paused").getAttribute("title")).toBe("Last checked " + c("2026-11-04T12:31:00Z"));
     expect(await screen.findByText("Check now to fill this in.")).toBeDefined();
     unmount();
+    // A pause Sift made says so, and why.
+    const sift = mount({ jobs: [tracker({ enabled: false, pausedReason: "Pi: Model unavailable" })], runs: [run({ status: "succeeded", endedAt: "2026-11-04T12:31:00Z" })] });
+    expect((await screen.findByText("Paused by Sift")).getAttribute("title")).toBe("Paused by Sift: Pi: Model unavailable\nLast checked " + c("2026-11-04T12:31:00Z"));
+    sift.unmount();
     mount({ jobs: [tracker({ nextRun: "" })] });
     expect(await screen.findByText("Scheduled")).toBeDefined();
     expect(screen.getByText("Scheduled").getAttribute("title")).toBe("Not checked yet");

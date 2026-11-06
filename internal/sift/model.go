@@ -101,6 +101,10 @@ type Job struct {
 	// started, the earliest time its automatic checks look at.
 	Kind  string `json:"kind,omitempty"`
 	Since string `json:"since,omitempty"`
+	// PausedReason says why Sift paused the schedule itself, after a run
+	// that needs the person or a restore. Resuming clears it; a pause the
+	// person chose has none.
+	PausedReason string `json:"pausedReason,omitempty"`
 }
 
 // JobSchedule is one recurring trigger: daily or selected weekdays at a local

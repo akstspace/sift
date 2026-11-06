@@ -188,7 +188,10 @@ function TrackerStatus({ tracker, running, last, tz, now, onOpenRun }: { tracker
     return <button type="button" className="tracker-status is-warning" onClick={() => onOpenRun(last.id)} title={last.error}><Warn size={14} aria-hidden />Last check needs attention</button>;
   }
   const checked = last?.endedAt ? "Last checked " + clock(new Date(last.endedAt).valueOf(), tz) : "Not checked yet";
-  if (!tracker.enabled) return <span className="tracker-status is-paused" title={checked}><Paused size={14} aria-hidden />Paused</span>;
+  if (!tracker.enabled) {
+    const why = tracker.pausedReason ? "Paused by Sift: " + tracker.pausedReason + "\n" : "";
+    return <span className="tracker-status is-paused" title={why + checked}><Paused size={14} aria-hidden />{tracker.pausedReason ? "Paused by Sift" : "Paused"}</span>;
+  }
   const next = nextCheckLabel(tracker.nextRun, tz, now);
   return <span className="tracker-status" title={checked}><span className="tracker-dot" aria-hidden />{next ? "Next check " + next : "Scheduled"}</span>;
 }

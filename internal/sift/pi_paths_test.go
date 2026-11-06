@@ -91,6 +91,93 @@ func TestPiExecutionFailureAndEvidencePaths(t *testing.T) {
 	}
 }
 
+func TestScheduleKeepsRunningWhenPiStopsOrIsSlow(t *testing.T) {
+	// A Pi that can't run (here, node missing from PATH) or that answers too
+	// late fails the run; the next scheduled run tries again.
+	enabled := func(t *testing.T, s *Service) Job {
+		j := fixtureJob(t, s, "success")
+		j.Enabled = true
+		j, err := s.SaveJob(j, j.Revision, "user")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return j
+	}
+	check := func(t *testing.T, s *Service, j Job, want string) {
+		r, err := s.RunJob(j.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result := awaitRun(t, s, r.ID, "failed")
+		var after Job
+		s.Store.Get("job", j.ID, &after)
+		if !strings.Contains(result.Error, want) || !after.Enabled || after.PausedReason != "" {
+			t.Fatal("a Pi failure paused the schedule", result.Error, after)
+		}
+	}
+	t.Run("stopped", func(t *testing.T) {
+		pi := filepath.Join(t.TempDir(), "pi")
+		if err := os.WriteFile(pi, []byte("#!/bin/sh\necho 'env: node: No such file or directory' >&2\nexit 127\n"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("SIFT_PI", pi)
+		s := testService(t)
+		check(t, s, enabled(t, s), "Pi exited before responding (env: node: No such file or directory)")
+	})
+	t.Run("slow", func(t *testing.T) {
+		fixturePi(t)
+		t.Setenv("PI_FIXTURE_HANG", "set_model")
+		previous := runCommandTimeout
+		runCommandTimeout = 200 * time.Millisecond
+		t.Cleanup(func() { runCommandTimeout = previous })
+		s := testService(t)
+		check(t, s, enabled(t, s), "deadline exceeded")
+	})
+}
+
+func TestSchedulePausedBySiftSaysWhyUntilResumed(t *testing.T) {
+	fixturePi(t)
+	t.Setenv("PI_FIXTURE_FAIL", "set_model")
+	s := testService(t)
+	j := fixtureJob(t, s, "success")
+	j.Enabled = true
+	j, err := s.SaveJob(j, j.Revision, "user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := s.RunJob(j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	awaitRun(t, s, r.ID, "action-needed")
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		s.runMu.Lock()
+		_, busy := s.active[j.ID]
+		s.runMu.Unlock()
+		if !busy {
+			break
+		}
+	}
+	s.Store.Get("job", j.ID, &j)
+	if j.Enabled || j.PausedReason != "Pi: Model unavailable" {
+		t.Fatal("pause without its reason", j)
+	}
+	// Editing it while it stays paused keeps Sift's reason; a client can't
+	// write one.
+	j.Prompt, j.PausedReason = "scenario:success edited", "made up"
+	if j, err = s.SaveJob(j, j.Revision, "user"); err != nil || j.PausedReason != "Pi: Model unavailable" {
+		t.Fatal(j.PausedReason, err)
+	}
+	j.Enabled = true
+	if j, err = s.SaveJob(j, j.Revision, "user"); err != nil || j.PausedReason != "" {
+		t.Fatal("resuming kept the reason", j.PausedReason, err)
+	}
+	fresh, err := s.SaveJob(Job{Name: "new", Prompt: "p", Directory: s.Dir, Timezone: "UTC", Schedules: j.Schedules, PausedReason: "made up"}, 0, "user")
+	if err != nil || fresh.PausedReason != "" {
+		t.Fatal("a new job took a client's reason", fresh.PausedReason, err)
+	}
+}
+
 func TestPiRefusesSilentModelFallbackAndMissingConfiguration(t *testing.T) {
 	for _, missing := range []bool{false, true} {
 		t.Run(map[bool]string{false: "fallback", true: "unconfigured"}[missing], func(t *testing.T) {
