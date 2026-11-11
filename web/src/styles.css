@@ -714,29 +714,12 @@ code {
   flex-shrink: 0;
   min-height: 34px;
 }
-.page-heading .today-date {
-  font-size: 12px;
-  margin-bottom: 10px;
-}
 .board-page { position: relative; padding-top: 24px; }
 .project-back { align-self: flex-start; margin-bottom: 12px; }
 .board-page > .page-heading { margin-bottom: 14px; gap: 16px; }
 .board-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 4px; }
 .board-title h1 { margin: 0; font-size: 26px; line-height: 1.25; }
-.page-heading .board-title .today-date { margin: 0; font-size: 12px; }
 .board-page > .page-heading > div > p { font-size: 13px; line-height: 1.5; }
-.daily-progress {
-  height: 3px;
-  background: var(--line);
-  border-radius: 2px;
-  margin-top: 0;
-  margin-bottom: 12px;
-  overflow: hidden;
-}
-.daily-progress > div {
-  height: 100%;
-  background: var(--green);
-}
 .task-toolbar {
   flex-shrink: 0;
   display: flex;
@@ -2760,9 +2743,6 @@ body:has(.drag-preview) .task-card { cursor: grabbing; }
     padding-left: 10px;
     padding-right: 10px;
   }
-  .page-heading .today-date {
-    font-size: 12px;
-  }
   .board-page { padding-top: 20px; }
   .board-title h1 { font-size: 25px; }
   .board-page > .page-heading { margin-bottom: 12px; }
@@ -3659,7 +3639,6 @@ button.tracker-status:focus-visible { outline: 2px solid var(--ring, var(--blue)
 @media (hover: none) { .row-actions { opacity: 1; } .session-link-task { display: none; } }
 .session-menu { min-width: 180px; }
 .task-picker-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-picker-today { color: var(--muted); font-size: 11.5px; }
 .task-picker-current { display: inline-flex; align-items: center; gap: 4px; color: var(--green); font-size: 11.5px; font-weight: 600; }
 
 .gap-row { display: grid; grid-template-columns: var(--time-w) var(--rail-w) minmax(0, 1fr) auto; align-items: start; padding: 10px 0 18px; }

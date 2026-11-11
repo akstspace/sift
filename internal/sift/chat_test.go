@@ -301,7 +301,7 @@ func TestChatSteersWhileReplyingAndStops(t *testing.T) {
 	routeRequest(t, h, "POST", "/api/chat/prompt", ChatPrompt{Message: "slow"}, 200, false)
 	awaitChat(t, events, eventType("agent_start"))
 	var queued map[string]any
-	json.Unmarshal(routeRequest(t, h, "POST", "/api/chat/prompt", ChatPrompt{Message: "and then this", Context: "Page: Today"}, 200, false), &queued)
+	json.Unmarshal(routeRequest(t, h, "POST", "/api/chat/prompt", ChatPrompt{Message: "and then this", Context: "Page: All tasks"}, 200, false), &queued)
 	if queued["disposition"] != "queued" {
 		t.Fatalf("message during a reply not queued: %v", queued)
 	}
@@ -327,7 +327,7 @@ func TestChatSteersWhileReplyingAndStops(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
 	var steer map[string]any
 	json.Unmarshal([]byte(lines[len(lines)-1]), &steer)
-	if steer["streamingBehavior"] != "steer" || !strings.HasPrefix(steer["message"].(string), "<sift-context>Page: Today</sift-context>\n\nand then this") {
+	if steer["streamingBehavior"] != "steer" || !strings.HasPrefix(steer["message"].(string), "<sift-context>Page: All tasks</sift-context>\n\nand then this") {
 		t.Fatalf("queued message sent wrong: %v", steer)
 	}
 	// Stop cleared the queue before aborting, so nothing else runs.

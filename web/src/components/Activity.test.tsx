@@ -44,20 +44,20 @@ describe("activity helpers", () => {
     expect(describeChange(undefined, before, lookups)).toEqual([]);
     expect(describeChange(before, before, lookups)).toEqual([]);
     expect(describeChange(before, {
-      ...before, deletedAt: "x", mergedInto: "tsk_2", archivedAt: "x", status: "done", title: "New", priority: "high", today: false,
+      ...before, deletedAt: "x", mergedInto: "tsk_2", archivedAt: "x", status: "done", title: "New", priority: "high",
       dueDate: "2026-11-14", snoozedUntil: "2026-11-05", project: "prj_home", tags: ["tag_bills"], parentId: "tsk_parent",
       description: "More", checklist: [{ id: "c1", title: "A", done: true }, { id: "c2", title: "B", done: false }], attachments: [], icon: "home",
     }, lookups)).toEqual([
-      "Deleted", "Merged into another task", "Archived", "Moved to Done", "Renamed", "High priority", "Removed from Today",
+      "Deleted", "Merged into another task", "Archived", "Moved to Done", "Renamed", "High priority",
       expect.stringMatching(/^Due (Nov 14|14 Nov)$/), expect.stringMatching(/^Snoozed until (Nov 5|5 Nov)$/), "Project: Home", "Tagged Bills", "Untagged Old",
       "Made a subtask", "Edited description", "Checklist 1/2", "Removed 2 images", "Changed icon",
     ]);
-    const changed = { ...before, today: false, deletedAt: "x", archivedAt: "x", priority: "urgent", dueDate: "2026-11-14", snoozedUntil: "2026-11-05", project: "prj_gone", parentId: "tsk_parent", tags: ["tag_new"] };
+    const changed = { ...before, deletedAt: "x", archivedAt: "x", priority: "urgent", dueDate: "2026-11-14", snoozedUntil: "2026-11-05", project: "prj_gone", parentId: "tsk_parent", tags: ["tag_new"] };
     expect(describeChange(changed, {
-      ...changed, deletedAt: "", archivedAt: "", status: "mystery", priority: "none", today: true, dueDate: "", snoozedUntil: "",
+      ...changed, deletedAt: "", archivedAt: "", status: "mystery", priority: "none", dueDate: "", snoozedUntil: "",
       project: "", parentId: "", checklist: [], attachments: ["att_1", "att_2", "att_3"],
     }, lookups)).toEqual([
-      "Restored", "Unarchived", "Moved to mystery", "No priority", "Added to Today", "No due date", "Unsnoozed", "No project",
+      "Restored", "Unarchived", "Moved to mystery", "No priority", "No due date", "Unsnoozed", "No project",
       "Made top-level", "Cleared checklist", "Added an image",
     ]);
     expect(describeChange(before, { ...before, attachments: ["att_1", "att_2", "att_3", "att_4"], project: "prj_gone", dueDate: "soon" }, lookups))
@@ -92,7 +92,7 @@ describe("Activity", () => {
       entry({ id: 2, actor: "job:job_1", before: task, after: { ...task, status: "done", priority: "high" }, reason: "CI passed at dc2ea74" }),
       entry({ id: 3, kind: "comment", actor: "chat", reason: "Context check: **no reply** yet. https://github.com/akaike-byob/akaike-chat/actions/runs/41615249361\n\n<script>x</script>" }),
       entry({ id: 4, actor: "local-agent", before: task, after: task }),
-      entry({ id: 5, actor: "codex", before: task, after: { ...task, title: "a", priority: "low", today: false, dueDate: "2026-11-20", project: "prj_home", description: "d", icon: "x" } }),
+      entry({ id: 5, actor: "codex", before: task, after: { ...task, title: "a", priority: "low", dueDate: "2026-11-20", snoozedUntil: "2026-11-21", project: "prj_home", description: "d", icon: "x" } }),
     ];
     render(<Activity history={history} lookups={lookups} now={now} undo={h => <button type="button">Undo {h.id}</button>} />);
     const items = within(screen.getByRole("list", { name: "Task activity" })).getAllByRole("listitem").filter(li => li.classList.contains("activity-entry"));

@@ -426,14 +426,19 @@ func TestPiImageInclusionRequiresPerJobConsentAndBoundsPayload(t *testing.T) {
 	large.ID = "large"
 	large.Size = 5 << 20
 	s.Store.Put("attachment", large.ID, large, "user", "fixture")
-	mustTask(t, s.Store, Task{Title: "Not Today", Attachments: []string{a.ID}})
-	mustTask(t, s.Store, Task{Title: "Deleted", Today: true, DeletedAt: now(), Attachments: []string{a.ID}})
+	// Only open tasks share images. Done (and so archived) and deleted tasks never do.
 	images := []string{large.ID}
 	for i := 0; i < 10; i++ {
 		images = append(images, a.ID)
 	}
-	mustTask(t, s.Store, Task{Title: "Today with consent only", Today: true, Attachments: images})
-	for _, consent := range []bool{false, true} {
+	mustTask(t, s.Store, Task{Title: "Done", Status: "done", Attachments: images})
+	mustTask(t, s.Store, Task{Title: "Deleted", DeletedAt: now(), Attachments: images})
+	mustTask(t, s.Store, Task{Title: "Open with consent only", Attachments: []string{large.ID, a.ID, a.ID, a.ID}})
+	// The third run adds an open task with many images to check the bound.
+	for step, consent := range []bool{false, true, true} {
+		if step == 2 {
+			mustTask(t, s.Store, Task{Title: "Open with many images", Attachments: images})
+		}
 		record := filepath.Join(t.TempDir(), "prompt.json")
 		t.Setenv("PI_FIXTURE_PROMPT_RECORD", record)
 		j := fixtureJob(t, s, "success")
@@ -472,8 +477,8 @@ func TestPiImageInclusionRequiresPerJobConsentAndBoundsPayload(t *testing.T) {
 		}
 		var received []map[string]string
 		json.Unmarshal(command["images"], &received)
-		if len(received) != 8 {
-			t.Fatal("image payload did not respect eight-image bound", len(received))
+		if want := map[int]int{1: 3, 2: 8}[step]; len(received) != want {
+			t.Fatal("image payload must hold only open tasks' small images, at most eight", step, len(received))
 		}
 		for _, image := range received {
 			if image["type"] != "image" || image["mimeType"] != "image/png" || image["data"] == "" {

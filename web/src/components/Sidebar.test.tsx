@@ -13,7 +13,7 @@ function responsive(mobile: boolean) {
 }
 function mount(mobile = false) {
   responsive(mobile);
-  const props = { page: "backlog", project: "p0", counts: { today: 2, backlog: 5, jobs: undefined }, version: "fixture", navigate: vi.fn(), addTask: vi.fn(), showHelp: vi.fn() };
+  const props = { page: "backlog", project: "p0", counts: { backlog: 5, jobs: undefined }, version: "fixture", navigate: vi.fn(), addTask: vi.fn(), showHelp: vi.fn() };
   return { ...render(<SidebarProvider><SidebarTrigger /><AppSidebar {...props} /></SidebarProvider>), props, user: userEvent.setup() };
 }
 describe("responsive workspace navigation", () => {
@@ -27,12 +27,13 @@ describe("responsive workspace navigation", () => {
     expect(screen.queryByRole("button", { name: "Project 0" })).toBeNull(); expect(document.querySelector(".sift-project-group")).toBeNull();
     expect(screen.getByRole("button", { name: "Projects" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("button", { name: "All tasks" }).hasAttribute("aria-current")).toBe(false);
-    for (const [label, page] of [["Today", "today"], ["All tasks", "backlog"], ["Projects", "organization"], ["Agents", "jobs"], ["Run history", "runs"], ["Settings", "settings"], ["Archive", "archive"], ["Trash", "trash"]]) {
+    for (const [label, page] of [["All tasks", "backlog"], ["Projects", "organization"], ["Agents", "jobs"], ["Run history", "runs"], ["Settings", "settings"], ["Archive", "archive"], ["Trash", "trash"]]) {
       await user.click(screen.getByRole("button", { name: label })); expect(props.navigate).toHaveBeenLastCalledWith(page);
     }
     await user.click(screen.getByRole("button", { name: "New task" })); expect(props.addTask).toHaveBeenCalledOnce();
     await user.click(screen.getByRole("button", { name: "Help and shortcuts" })); expect(props.showHelp).toHaveBeenCalledOnce();
-    await user.click(screen.getByRole("link", { name: "Sift home" })); expect(props.navigate).toHaveBeenLastCalledWith("today");
+    await user.click(screen.getByRole("link", { name: "Sift home" })); expect(props.navigate).toHaveBeenLastCalledWith("backlog");
+    expect(screen.queryByRole("button", { name: "Today" })).toBeNull();
   });
   it("collapses with the keyboard except while typing, and persists the explicit toggle", async () => {
     const { user } = mount(); fireEvent.keyDown(window, { key: "b", metaKey: true });
@@ -59,9 +60,9 @@ describe("responsive workspace navigation", () => {
   });
   it("keeps Projects reachable with no selected project and supports controlled and fixed sidebars", async () => {
     responsive(false); const navigate = vi.fn(), change = vi.fn();
-    const props = { page: "today", project: "", counts: {}, version: "fixture", navigate, addTask: vi.fn(), showHelp: vi.fn() };
+    const props = { page: "backlog", project: "", counts: {}, version: "fixture", navigate, addTask: vi.fn(), showHelp: vi.fn() };
     const { rerender } = render(<SidebarProvider open onOpenChange={change}><SidebarTrigger /><AppSidebar {...props} /></SidebarProvider>);
-    expect(screen.getByRole("button", { name: "Today" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "All tasks" }).getAttribute("aria-current")).toBe("page");
     const user = userEvent.setup(); await user.click(screen.getByRole("button", { name: "Projects" })); expect(navigate).toHaveBeenCalledWith("organization");
     await user.click(screen.getByRole("button", { name: "Collapse sidebar" })); expect(change).toHaveBeenCalledWith(false);
     rerender(<SidebarProvider><Sidebar collapsible="none">Fixed navigation</Sidebar></SidebarProvider>); expect(screen.getByText("Fixed navigation")).toBeDefined();

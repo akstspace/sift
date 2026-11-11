@@ -73,7 +73,7 @@ type arguments struct {
 
 func parseArgs(args []string) arguments {
 	a := arguments{Flags: map[string]string{}, Lists: map[string][]string{}}
-	bools := map[string]bool{"today": true, "enabled": true, "json": true, "check": true, "yes": true, "quiet": true, "wait": true, "default-prompt": true, "default-model": true, "pause": true, "resume": true, "fill-today": true}
+	bools := map[string]bool{"enabled": true, "json": true, "check": true, "yes": true, "quiet": true, "wait": true, "default-prompt": true, "default-model": true, "pause": true, "resume": true, "fill-today": true}
 	for i := 0; i < len(args); i++ {
 		v := args[i]
 		if strings.HasPrefix(v, "--") {
@@ -191,7 +191,7 @@ tasks get ID                      Task, current revision, history, potential dup
 tasks comments ID [--after EVENT_ID] Read comments (JSON; up to 1,000 per page)
 tasks comment ID --text TEXT       Post a comment [--request-id KEY]
 tasks duplicates --title TITLE   Find potential duplicates before creating
-tasks add --title TITLE [--today] [--parent ID] [--source-key KEY]
+tasks add --title TITLE [--parent ID] [--source-key KEY]
           [--due-date YYYY-MM-DD]  Optional deadline (empty value clears it on update)
 tasks update ID --revision N [--status STATUS] [--reason REASON]
 tasks merge ID --into ID --revision N --target-revision N --reason REASON
@@ -378,9 +378,6 @@ No silent daemon autostart, automatic duplicate merging, or model fallback.`)
 				if v, ok := a.Flags[k]; ok {
 					*p = v
 				}
-			}
-			if v, ok := a.Flags["today"]; ok {
-				t.Today = v == "true"
 			}
 			if v, ok := a.Flags["tags"]; ok {
 				t.Tags = []string{}

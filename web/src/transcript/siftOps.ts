@@ -10,7 +10,7 @@ export interface SiftCall {
   lists: Record<string, string[]>;
 }
 
-const BOOLS = new Set(["today", "enabled", "json", "check", "yes", "quiet", "wait"]);
+const BOOLS = new Set(["enabled", "json", "check", "yes", "quiet", "wait"]);
 
 /** Splits a shell command into words. Returns null for anything beyond one simple command. */
 export function shellWords(command: string): string[] | null {
@@ -136,7 +136,6 @@ function taskChanges(call: SiftCall, lookups: Lookups, adding: boolean): string[
     const column = lookups.columns.find(c => c.id === f.status)?.name || f.status;
     out.push(f.status === "done" ? "Marked done" : `Moved to ${column}`);
   }
-  if ("today" in f) out.push(f.today === "false" ? "Removed from Today" : "Added to Today");
   if ("due-date" in f) out.push(f["due-date"] ? `Due ${formatDate(f["due-date"])}` : "Removed due date");
   if ("snoozed-until" in f) out.push(f["snoozed-until"] ? `Snoozed until ${formatDate(f["snoozed-until"])}` : "Unsnoozed");
   if ("priority" in f && !(adding && f.priority === "none")) out.push(`${f.priority[0]?.toUpperCase() || ""}${f.priority.slice(1)} priority`);

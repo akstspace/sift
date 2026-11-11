@@ -22,19 +22,19 @@ const show = (items: Item[], props: Partial<TranscriptProps> = {}) => render(<Tr
 describe("transcript", () => {
   it("shows what the person sent, with images and what Sift shared", () => {
     const { container } = show([
-      { kind: "user", key: "u1", text: "Plan my day", images: [{ type: "image", data: "AAAA", mimeType: "image/png" }, { type: "image", mimeType: "image/png" }], context: "Page: Today. Open task: Pay rent (task_1).", pending: true },
+      { kind: "user", key: "u1", text: "Plan my day", images: [{ type: "image", data: "AAAA", mimeType: "image/png" }, { type: "image", mimeType: "image/png" }], context: "Page: All tasks. Open task: Pay rent (task_1).", pending: true },
       { kind: "user", key: "u2", text: "", images: [{ type: "image", data: "BB", mimeType: "image/jpeg" }] },
     ]);
     expect(screen.getByText("Plan my day")).toBeDefined();
     expect(screen.getAllByRole("img", { name: "Attached image 1" }).map(i => i.getAttribute("src"))).toEqual(["data:image/png;base64,AAAA", "data:image/jpeg;base64,BB"]);
     expect(container.querySelector(".image-omitted")?.textContent).toBe("Image");
-    expect(screen.getByText("Today · Pay rent").closest(".user-context")?.getAttribute("title")).toBe("Page: Today. Open task: Pay rent (task_1).");
+    expect(screen.getByText("All tasks · Pay rent").closest(".user-context")?.getAttribute("title")).toBe("Page: All tasks. Open task: Pay rent (task_1).");
     expect(screen.getByText("Sift shared:")).toBeDefined();
     expect(container.querySelector(".user-message.pending")).not.toBeNull();
     expect(container.querySelectorAll(".user-bubble")).toHaveLength(1);
   });
   it("reads what Sift shared as a short label", () => {
-    expect(contextLabel("Page: Today. Open task: Pay rent (task_1).")).toBe("Today · Pay rent");
+    expect(contextLabel("Page: All tasks. Open task: Pay rent (task_1).")).toBe("All tasks · Pay rent");
     expect(contextLabel("Page: Project Home. Searching for: rent.")).toBe("Project Home");
     expect(contextLabel("Open run: Morning (run_1).")).toBe("Open run: Morning (run_1).");
   });
@@ -211,11 +211,11 @@ describe("Sift cards", () => {
   it("shows a change with its task, what changed, and the command behind it", () => {
     const onOpenTask = vi.fn();
     const { container } = show([tool({
-      args: { command: `${SIFT} tasks update task_1 --revision 3 --today --priority high --reason 'Landlord asked'` },
+      args: { command: `${SIFT} tasks update task_1 --revision 3 --priority high --reason 'Landlord asked'` },
       output: JSON.stringify({ task: { id: "task_1", title: "Pay rent" } }), durationMs: 900,
     })], { onOpenTask });
     const card = screen.getByRole("region", { name: "Updated task" });
-    expect(within(card).getByRole("list", { name: "Changes" }).textContent).toBe("Added to TodayHigh priority");
+    expect(within(card).getByRole("list", { name: "Changes" }).textContent).toBe("High priority");
     expect(card.querySelector(".sift-quote")?.textContent).toBe("Landlord asked");
     expect(within(card).getByRole("img", { name: "Done" })).toBeDefined();
     const chip = within(card).getByRole("button", { name: "Open task Pay rent" });

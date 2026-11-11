@@ -131,7 +131,7 @@ function UserMessage({ text, images, context, pending }: { text: string; images:
   );
 }
 
-/** "Page: Today. Open task: Pay rent (task_1)." reads as "Today · Pay rent". */
+/** "Page: All tasks. Open task: Pay rent (task_1)." reads as "All tasks · Pay rent". */
 export function contextLabel(context: string) {
   const page = context.match(/Page: ([^.]+)/)?.[1];
   const task = context.match(/Open task: (.+?) \(task_[\w-]+\)/)?.[1];

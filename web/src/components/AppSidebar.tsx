@@ -6,7 +6,6 @@ import {
   IconHistory as History,
   IconPlus as Plus,
   IconSettings as Settings2,
-  IconSunHigh as SunMedium,
   IconTerminal2 as Terminal,
   IconTimeline as Timeline,
   IconTrash as Trash2,
@@ -32,7 +31,6 @@ import {
 } from "./ui/sidebar";
 
 export const navigation = [
-  { id: "today", label: "Today", icon: SunMedium },
   { id: "backlog", label: "All tasks", icon: ListCheck },
   { id: "activity", label: "My activity", icon: Timeline },
   { id: "organization", label: "Projects", icon: Folder },
@@ -83,7 +81,7 @@ export function AppSidebar({
             aria-label="Sift home"
             onClick={(e) => {
               e.preventDefault();
-              go(() => navigate("today"));
+              go(() => navigate("backlog"));
             }}
           >
             <Mark />

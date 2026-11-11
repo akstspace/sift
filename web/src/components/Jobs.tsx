@@ -429,7 +429,7 @@ function JobEditor({
                 onCheckedChange={(v) => set("includeImages", v === true)}
               />
               <span>
-                Include Today’s task images in model input
+                Include images from open tasks in model input
                 <small>
                   Sends up to 8 images (under 5 MB each) to the
                   chosen model.

@@ -19,7 +19,7 @@ const KEYBOARD_OWNERS = '[role="dialog"], [role="alertdialog"]';
 const STORAGE = "sift.chat";
 
 export interface ChatView {
-  /** "Page: Today. Open task: Pay rent (task_1)." — what Pi is told the person is looking at. */
+  /** "Page: All tasks. Open task: Pay rent (task_1)." — what Pi is told the person is looking at. */
   context: string;
 }
 

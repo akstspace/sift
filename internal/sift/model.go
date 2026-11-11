@@ -26,7 +26,6 @@ type Task struct {
 	Tags         []string        `json:"tags"`
 	Icon         string          `json:"icon"`
 	ParentID     string          `json:"parentId"`
-	Today        bool            `json:"today"`
 	DueDate      string          `json:"dueDate"`
 	SnoozedUntil string          `json:"snoozedUntil"`
 	Checklist    []ChecklistItem `json:"checklist"`

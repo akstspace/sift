@@ -185,14 +185,14 @@ func TestCLIAgainstLocalRoutes(t *testing.T) {
 	var result struct {
 		Task Task `json:"task"`
 	}
-	json.Unmarshal(call(false, "tasks", "add", "--title", "CLI route task", "--today", "--tags=", "--priority", "high"), &result)
+	json.Unmarshal(call(false, "tasks", "add", "--title", "CLI route task", "--tags=", "--priority", "high"), &result)
 	id := result.Task.ID
 	if id == "" {
 		t.Fatal("no CLI task")
 	}
 	call(false, "tasks", "get", id)
 	call(true, "tasks", "update", id, "--title", "missing revision")
-	call(false, "tasks", "update", id, "--revision", "1", "--title", "Updated CLI", "--today=false", "--reason", "reviewed")
+	call(false, "tasks", "update", id, "--revision", "1", "--title", "Updated CLI", "--reason", "reviewed")
 	call(false, "projects", "add", "--name", "CLI project")
 	call(false, "tags", "add", "--name", "CLI tag")
 	file := filepath.Join(s.Dir, "task.json")
@@ -230,8 +230,8 @@ func TestCLIAgainstLocalRoutes(t *testing.T) {
 }
 
 func TestCLIParsingActorAndDefaults(t *testing.T) {
-	a := parseArgs([]string{"tasks", "add", "--title=hello", "--today", "--missing", "--priority", "high"})
-	if len(a.Pos) != 2 || a.Flags["title"] != "hello" || a.Flags["today"] != "true" || a.Flags["missing"] != "true" || a.Flags["priority"] != "high" {
+	a := parseArgs([]string{"tasks", "add", "--title=hello", "--wait", "--missing", "--priority", "high"})
+	if len(a.Pos) != 2 || a.Flags["title"] != "hello" || a.Flags["wait"] != "true" || a.Flags["missing"] != "true" || a.Flags["priority"] != "high" {
 		t.Fatal(a)
 	}
 	t.Setenv("SIFT_DATA", "/fixture")

@@ -300,8 +300,9 @@ func (s *Service) executeRun(ctx context.Context, job Job, run Run) {
 	command := map[string]any{"type": "prompt", "message": guide + job.Prompt}
 	if job.IncludeImages {
 		images := []map[string]string{}
+		// Images come from open tasks: the ones on All tasks that are not done.
 		for _, task := range s.Store.Tasks() {
-			if !task.Today || task.DeletedAt != "" {
+			if task.Status == "done" || task.DeletedAt != "" || task.ArchivedAt != "" || task.MergedInto != "" {
 				continue
 			}
 			for _, id := range task.Attachments {

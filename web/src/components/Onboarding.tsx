@@ -382,7 +382,7 @@ export function Onboarding({
               ) : (
                 <>
                   <p className="onboard-lede">
-                    Start with a clean Today, or set up your first scheduled
+                    Start with a clean task list, or set up your first scheduled
                     agent. There are no sample tasks to clear away.
                   </p>
                   <div className="finish-note">

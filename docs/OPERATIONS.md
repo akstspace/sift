@@ -72,7 +72,7 @@ field (typing an existing name reuses that tag), filter any board by tag from
 Agents keep using `sift tags ...` and `--tag` as before.
 
 Project selection clears task search and filters and starts in Board view,
-even when Today or All tasks uses List view. Switching a project to List is
+even when All tasks uses List view. Switching a project to List is
 local to that visit and does not change the saved workspace preference. New
 tasks on a project board start assigned to that project.
 

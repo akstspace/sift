@@ -54,7 +54,6 @@ export function describeChange(before: Task | undefined, after: Task | undefined
   if (before.status !== after.status) out.push("Moved to " + (lookups.columns.find(c => c.id === after.status)?.name || after.status));
   if (before.title !== after.title) out.push("Renamed");
   if (before.priority !== after.priority) out.push(priorityNames[after.priority] || "No priority");
-  if (before.today !== after.today) out.push(after.today ? "Added to Today" : "Removed from Today");
   if (before.dueDate !== after.dueDate) out.push(after.dueDate ? "Due " + shortDate(after.dueDate) : "No due date");
   if (before.snoozedUntil !== after.snoozedUntil) out.push(after.snoozedUntil ? "Snoozed until " + shortDate(after.snoozedUntil) : "Unsnoozed");
   if (before.project !== after.project) out.push(after.project ? "Project: " + named(lookups.projects, after.project) : "No project");

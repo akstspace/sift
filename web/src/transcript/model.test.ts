@@ -6,13 +6,13 @@ const call = (id: string, name = "bash", args: Record<string, unknown> = { comma
 describe("items from Pi's messages", () => {
   it("shows the person's words, images, and what Sift shared, without empty messages", () => {
     const items = itemsFromMessages([
-      { role: "user", content: "Plan my day", siftContext: "Page: Today." },
+      { role: "user", content: "Plan my day", siftContext: "Page: All tasks." },
       { role: "user", content: [{ type: "text", text: "Look" }, { type: "image", data: "AAA", mimeType: "image/png" }], pending: true },
       { role: "user", content: [] },
       { role: "user" },
     ]);
     expect(items).toEqual([
-      { kind: "user", key: "m0", text: "Plan my day", images: [], context: "Page: Today.", pending: undefined },
+      { kind: "user", key: "m0", text: "Plan my day", images: [], context: "Page: All tasks.", pending: undefined },
       { kind: "user", key: "m1", text: "Look", images: [{ type: "image", data: "AAA", mimeType: "image/png" }], context: undefined, pending: true },
     ]);
   });

@@ -39,12 +39,12 @@ const ENTRIES = [
 const check = (from: string, to: string): ActivityCheck => ({ id: "chk_" + from, from, to, runId: "run_old", at: to });
 const CHECKS = [check("2026-11-02T00:00:00Z", "2026-11-04T12:00:00Z")];
 const TASKS = [
-  taskFixture({ id: "tsk_ci", title: "Fix staging CI", today: true, updatedAt: "2026-11-04T10:00:00Z" }),
+  taskFixture({ id: "tsk_ci", title: "Fix staging CI", updatedAt: "2026-11-04T10:00:00Z" }),
   taskFixture({ id: "tsk_done", title: "Ship the release", status: "done" }),
   taskFixture({ id: "tsk_gone", title: "Old idea", deletedAt: "2026-11-03T00:00:00Z" }),
   taskFixture({ id: "tsk_merged", title: "Release notes", mergedInto: "tsk_ci" }),
-  taskFixture({ id: "tsk_offsite", title: "Plan the Q4 offsite", today: false }),
-  taskFixture({ id: "tsk_finished", title: "Finished chore", status: "done", today: true }),
+  taskFixture({ id: "tsk_offsite", title: "Plan the Q4 offsite" }),
+  taskFixture({ id: "tsk_finished", title: "Finished chore", status: "done" }),
 ];
 
 let weeks: Record<string, { entries: ActivityEntry[]; checks: ActivityCheck[] }>;
@@ -384,7 +384,7 @@ describe("changing sessions", () => {
     await user.click(within(row("Platform standup")).getByRole("button", { name: "Link task" }));
     const search = await screen.findByRole("combobox", { name: "Link to a task" });
     const options = screen.getAllByRole("option").map(o => o.textContent);
-    expect(options).toEqual(["Fix staging CIToday", "Plan the Q4 offsite", "Ship the release", "Finished chore"]);
+    expect(options).toEqual(["Fix staging CI", "Plan the Q4 offsite", "Ship the release", "Finished chore"]);
     await user.type(search, "offsite");
     expect(screen.getAllByRole("option")).toHaveLength(1);
     await user.click(screen.getByRole("option", { name: /Plan the Q4 offsite/ }));

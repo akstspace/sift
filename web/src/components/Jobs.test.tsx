@@ -98,7 +98,7 @@ describe("scheduled jobs without model prompts", () => {
     await user.clear(screen.getByRole("textbox", { name: "Cron expression" })); await user.type(screen.getByRole("textbox", { name: "Cron expression" }), "30 10 * * *");
     await choice("Model", "fixture / Reasoner"); await screen.findByRole("button", { name: "Refresh models" });
     await choice("Thinking", "High");
-    await user.click(screen.getByRole("checkbox", { name: /Include Today/ })); await user.click(screen.getByRole("checkbox", { name: /Run on schedule/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Include images from open tasks/ })); await user.click(screen.getByRole("checkbox", { name: /Run on schedule/ }));
     fireEvent.change(screen.getByRole("spinbutton", { name: "Timeout (minutes)" }), { target: { value: "45" } });
     await user.click(screen.getByRole("button", { name: "Save job" }));
     await waitFor(() => expect(mock).toHaveBeenCalledWith("/jobs", "POST", expect.objectContaining({ provider: "fixture", model: "reasoner", thinking: "high", enabled: true, includeImages: true, schedules: [{ type: "cron", schedule: "30 10 * * *" }], timeoutMinutes: 45, sessionId: "session_test" })));

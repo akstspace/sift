@@ -420,9 +420,6 @@ export function TaskDetail({
         <Field label="Project">
           <Choice value={task.project} onValueChange={v => update("project", v)} options={[{ value: "", label: "No project" }, ...snapshot.projects.filter(p => !p.archived || p.id === task.project).map(p => ({ value: p.id, label: p.name }))]} />
         </Field>
-        <Field label="Focus">
-          <Choice value={String(task.today)} onValueChange={v => update("today", v === "true")} options={[{ value: "true", label: "Today" }, { value: "false", label: "All tasks only" }]} />
-        </Field>
         <Field label="Due date">
           <DateChoice placeholder="Set due date" value={task.dueDate} onValueChange={v => update("dueDate", v)} />
         </Field>

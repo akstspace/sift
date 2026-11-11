@@ -43,7 +43,7 @@ const chatInfo = (over: Partial<ChatInfo> = {}): ChatInfo => ({
 let state: ChatInfo;
 let peek: Partial<ChatInfo>;
 let routes: Map<string, (body: unknown) => unknown>;
-const snap: Snapshot = snapshotFixture({ tasks: [taskFixture({ id: "task_1", title: "Pay rent", today: true })] });
+const snap: Snapshot = snapshotFixture({ tasks: [taskFixture({ id: "task_1", title: "Pay rent" })] });
 
 beforeEach(() => {
   preference.reduced = false; toasts.shown = []; localStorage.clear();
@@ -69,7 +69,7 @@ const emit = async (...events: Record<string, unknown>[]) => {
 };
 function dock(props: Partial<Parameters<typeof ChatDock>[0]> = {}) {
   const onOpenTask = vi.fn(), onOpenRun = vi.fn();
-  const view = { context: "Page: Today." };
+  const view = { context: "Page: All tasks." };
   const ui = (p: Partial<Parameters<typeof ChatDock>[0]> = {}) => (
     <TestProviders><ChatDock snapshot={snap} catalog={catalogFixture} view={view} onOpenTask={onOpenTask} onOpenRun={onOpenRun} {...props} {...p} /></TestProviders>
   );
@@ -195,19 +195,19 @@ describe("chat conversation", () => {
     // The message shows at once, before Pi confirms it.
     expect(panel.querySelector(".user-message.pending")?.textContent).toContain("Plan my day");
     expect(composer().value).toBe("");
-    expect(calls("/chat/prompt")[0]).toEqual({ message: "Plan my day", images: [], context: "Page: Today." });
+    expect(calls("/chat/prompt")[0]).toEqual({ message: "Plan my day", images: [], context: "Page: All tasks." });
     await act(async () => reply.resolve({ disposition: "started" }));
     expect(within(panel).getByRole("status", { name: "Sift is replying" })).toBeDefined();
     expect(composer().placeholder).toBe("Add to what Sift is doing…");
     await emit(
       { type: "agent_start" },
-      { type: "message_start", message: { role: "user", content: "Plan my day", siftContext: "Page: Today.", timestamp: 2 } },
+      { type: "message_start", message: { role: "user", content: "Plan my day", siftContext: "Page: All tasks.", timestamp: 2 } },
       { type: "message_start", message: { role: "assistant", content: [], timestamp: 3 } },
       { type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0 } },
       { type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "Start with " } },
     );
     expect(panel.querySelector(".user-message.pending")).toBeNull();
-    expect(panel.querySelector(".user-context")?.textContent).toBe("Sift shared: Today");
+    expect(panel.querySelector(".user-context")?.textContent).toBe("Sift shared: All tasks");
     await waitFor(() => expect(within(panel).queryByRole("status", { name: "Sift is replying" })).toBeNull());
     expect(panel.querySelector(".agent-markdown.streaming")?.textContent).toBe("Start with");
     await emit(
@@ -268,7 +268,7 @@ describe("chat conversation", () => {
     expect(await screen.findByText("Sift couldn’t start Pi.")).toBeDefined();
   });
   it("suggests a first message for what's on screen", async () => {
-    dock({ view: { context: "Page: Today. Open task: Pay rent (task_1)." }, snapshot: { ...snap, runs: [{ id: "run_1" } as Snapshot["runs"][number]] } });
+    dock({ view: { context: "Page: All tasks. Open task: Pay rent (task_1)." }, snapshot: { ...snap, runs: [{ id: "run_1" } as Snapshot["runs"][number]] } });
     const panel = await openChat();
     const ideas = within(panel).getAllByRole("listitem").map(li => li.textContent);
     expect(ideas).toEqual(["Break “Pay rent” into smaller steps", "Add a task:", "What did my agents do today?", "Find tasks that look like duplicates"]);
@@ -300,7 +300,7 @@ describe("chat conversation", () => {
     routes.set("POST /chat/prompt", () => ({ disposition: "handled" }));
     await type("/compact ");
     await press("Enter");
-    await waitFor(() => expect(calls("/chat/prompt").at(-1)).toEqual({ message: "/compact", images: [], context: "Page: Today." }));
+    await waitFor(() => expect(calls("/chat/prompt").at(-1)).toEqual({ message: "/compact", images: [], context: "Page: All tasks." }));
     await waitFor(() => expect(panel.querySelector(".user-message")).toBeNull());
     // Shift+Enter is a new line, and an empty message doesn't send.
     await type("line");
@@ -310,7 +310,7 @@ describe("chat conversation", () => {
     expect(calls("/chat/prompt")).toHaveLength(2);
   });
   it("adds to a running reply as a queued message, and stops it", async () => {
-    state = chatInfo({ running: true, queue: { steering: ["<sift-context>Page: Today.</sift-context>\n\nAlso the dentist"] } });
+    state = chatInfo({ running: true, queue: { steering: ["<sift-context>Page: All tasks.</sift-context>\n\nAlso the dentist"] } });
     routes.set("POST /chat/prompt", () => ({ disposition: "queued" }));
     dock();
     const panel = await openChat();
@@ -635,9 +635,9 @@ describe("chat composer", () => {
     expect(panel.querySelector(".user-message.pending img")).not.toBeNull();
   });
   it("shares the current view unless switched off for this message", async () => {
-    const { again } = dock({ view: { context: "Page: Today. Open task: Pay rent (task_1)." } });
+    const { again } = dock({ view: { context: "Page: All tasks. Open task: Pay rent (task_1)." } });
     const panel = await openChat();
-    const chip = within(panel).getByRole("button", { name: "Today · Pay rent" });
+    const chip = within(panel).getByRole("button", { name: "All tasks · Pay rent" });
     expect(chip.getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(chip);
     expect(within(panel).getByRole("button", { name: "View not shared" }).getAttribute("aria-pressed")).toBe("false");

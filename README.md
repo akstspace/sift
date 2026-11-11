@@ -91,7 +91,7 @@ Use the same `--data` directory for CLI commands and the running service.
 
 ## Your work
 
-- Today is a focused selection over **All tasks**, not a daily reset. Set or clear a due date in task details using the calendar or YYYY-MM-DD entry; deadlines also work through `--due-date` in the CLI.
+- **All tasks** is the one task list and the page Sift opens on. Set or clear a due date in task details using the calendar or YYYY-MM-DD entry; deadlines also work through `--due-date` in the CLI.
 - Done tasks automatically move to **Archive** seven days after completion by default. Settings → Recovery & retention lets you change the delay (0 disables it). Archived tasks, attachments, and history are kept indefinitely; open one and choose **Reopen task** to return it to All tasks. Edits do not reset completion time. Reopening an archived subtask also reopens its completed parent.
 - Board and virtualized list views share search and priority, tag, project,
   and status filters. Task details overlay the board without resizing it.
@@ -118,7 +118,7 @@ retried. Use a meaningful `--actor` and reasons for completion/reopening.
 
 ```sh
 ./sift tasks duplicates --title "Review the release notes"
-./sift tasks add --title "Review the release notes" --today \
+./sift tasks add --title "Review the release notes" \
   --actor release-review --source-key release-notes --request-id review-001
 ./sift icons search email
 ./sift models list

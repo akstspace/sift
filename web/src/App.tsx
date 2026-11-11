@@ -21,7 +21,6 @@ import {
   IconSettings as Settings2,
   IconAdjustmentsHorizontal as SlidersHorizontal,
   IconSun as Sun,
-  IconSunHigh as SunMedium,
   IconTerminal2 as Terminal,
   IconTimeline as Timeline,
   IconTrash as Trash2,
@@ -84,7 +83,7 @@ function Workspace() {
   const { guard } = useDraftGuard();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null),
     [catalog, setCatalog] = useState<CatalogIcon[]>([]),
-    [page, setPage] = useState("today"),
+    [page, setPage] = useState("backlog"),
     [project, setProject] = useState(""),
     [projectView, setProjectView] = useState("board"),
     [query, setQuery] = useState(""),
@@ -327,7 +326,6 @@ function Workspace() {
   const addTask = (taskStatus = "open", parent = "") => guard(() => {
     const t = newTask(parent);
     t.status = taskStatus;
-    t.today = page === "today";
     t.project =
       project || snapshot?.tasks.find((v) => v.id === parent)?.project || "";
     setSelected(t);
@@ -359,20 +357,6 @@ function Workspace() {
     () => snapshot?.tasks.filter((t) => !t.deletedAt && !t.mergedInto && !t.archivedAt) || [],
     [snapshot?.tasks],
   );
-  const todayTasks = useMemo(
-    () =>
-      activeTasks.filter(
-        (t) =>
-          (t.today ||
-            (t.dueDate && t.dueDate <= today) ||
-            (t.snoozedUntil && t.snoozedUntil <= today)) &&
-          (!t.snoozedUntil || t.snoozedUntil <= today) &&
-          (t.status !== "done" ||
-            localDateAt(t.completedAt || t.updatedAt, timezone) ===
-              today),
-      ),
-    [activeTasks, today, timezone],
-  );
   const tasks = useMemo(() => {
     if (!snapshot) return [];
     let list =
@@ -380,8 +364,6 @@ function Workspace() {
         ? snapshot.tasks.filter((t) => !!t.deletedAt)
         : page === "archive"
           ? snapshot.tasks.filter(t => !!t.archivedAt && !t.deletedAt && !t.mergedInto)
-        : page === "today"
-          ? todayTasks
           : activeTasks;
     return list
       .filter(
@@ -409,7 +391,6 @@ function Workspace() {
   }, [
     snapshot?.tasks,
     page,
-    todayTasks,
     activeTasks,
     today,
     project,
@@ -419,7 +400,6 @@ function Workspace() {
     status,
     due,
   ]);
-  const doneToday = todayTasks.filter((t) => t.status === "done").length;
   if (!snapshot)
     return (
       <MotionConfig reducedMotion="user">
@@ -458,8 +438,8 @@ function Workspace() {
         <Toaster theme={darkTheme ? "dark" : "light"} richColors />
       </MotionConfig>
     );
-  const boardPage = ["today", "backlog", "trash", "archive"].includes(page);
-  const pageLabels: Record<string, string> = { today: "Today", backlog: "All tasks", activity: "My activity", trash: "Trash", archive: "Archive", organization: "Projects", jobs: "Agents", runs: "Run history", settings: "Settings" };
+  const boardPage = ["backlog", "trash", "archive"].includes(page);
+  const pageLabels: Record<string, string> = { backlog: "All tasks", activity: "My activity", trash: "Trash", archive: "Archive", organization: "Projects", jobs: "Agents", runs: "Run history", settings: "Settings" };
   const viewedTask = snapshot.tasks.find(t => t.id === (selected?.id || lastTask));
   const viewedRun = page === "runs" ? snapshot.runs.find(r => r.id === selectedRun) : undefined;
   const chatContext = [
@@ -472,21 +452,13 @@ function Workspace() {
   const taskView = project ? projectView : snapshot.settings.view;
   const title = project
     ? snapshot.projects.find((p) => p.id === project)?.name || "Project"
-    : page === "today"
-      ? "Today"
-      : page === "trash"
+    : page === "trash"
         ? "Trash"
         : page === "archive" ? "Archive" : "All tasks";
   const activeRuns = snapshot.runs.filter((r) => r.status === "running"),
     unread = snapshot.notifications.filter((n) => !n.read).length,
     notices = [...snapshot.notifications].sort((a, b) => b.at.localeCompare(a.at));
   const navItems = [
-    {
-      id: "today",
-      label: "Today",
-      icon: SunMedium,
-      count: todayTasks.filter((t) => t.status !== "done").length,
-    },
     {
       id: "backlog",
       label: "All tasks",
@@ -513,7 +485,7 @@ function Workspace() {
           <a className="skip-link" href="#main">
             Skip to main content
           </a>
-          <AppSidebar page={page} project={project} counts={{today: todayTasks.filter(t => t.status !== "done").length, backlog: activeTasks.filter(t => t.status !== "done").length, jobs: activeRuns.length || undefined}} version={snapshot.version} navigate={navigate} addTask={() => addTask()} showHelp={() => setHelp(true)} />
+          <AppSidebar page={page} project={project} counts={{backlog: activeTasks.filter(t => t.status !== "done").length, jobs: activeRuns.length || undefined}} version={snapshot.version} navigate={navigate} addTask={() => addTask()} showHelp={() => setHelp(true)} />
           <div className="workspace">
             <header className="topbar">
               <SidebarTrigger />
@@ -529,7 +501,7 @@ function Workspace() {
                   value={query}
                   onChange={(e) => {
                     setQuery(e.target.value);
-                    if (!boardPage || page === "today") setPage("backlog");
+                    if (!boardPage) setPage("backlog");
                   }}
                 />
                 <kbd>⌘ K</kbd>
@@ -600,23 +572,9 @@ function Workspace() {
                           <div>
                             <div className="board-title">
                             <h1>{project ? <motion.span className="project-title-morph" layoutId={projectTitleId(project)} transition={reduced ? { duration: 0 } : titleMorph}>{title}</motion.span> : title}</h1>
-                          {page === "today" && (
-                              <p className="today-date">
-                              {new Intl.DateTimeFormat(undefined, {
-                                weekday: "long",
-                                month: "long",
-                                day: "numeric",
-                                timeZone: snapshot.settings.timezone,
-                              }).format(new Date())}
-                              </p>
-                          )}
                             </div>
                           <p>
-                            {page === "today"
-                              ? todayTasks.length
-                                ? `${doneToday} of ${todayTasks.length} tasks complete`
-                                : "A little clarity for the day ahead."
-                              : page === "trash"
+                            {page === "trash"
                                 ? `Recoverable for ${snapshot.settings.trashRetentionDays} days. History is kept after removal.`
                                  : page === "archive"
                                    ? "Completed work, kept indefinitely. Reopen a task to return it to All tasks."
@@ -632,23 +590,6 @@ function Workspace() {
                           </Button>
                         )}
                       </header>
-                      {page === "today" && todayTasks.length > 0 && (
-                        <div
-                          className="daily-progress"
-                          role="progressbar"
-                          aria-valuemin={0}
-                          aria-valuemax={todayTasks.length}
-                          aria-valuenow={doneToday}
-                          aria-label={`${doneToday} of ${todayTasks.length} tasks complete`}
-                        >
-                          <motion.div
-                            initial={false}
-                            style={{ originX: 0 }}
-                            animate={{ scaleX: doneToday / todayTasks.length }}
-                            transition={{ duration: reduced ? 0.1 : 0.5, ease: settle }}
-                          />
-                        </div>
-                      )}
                       <div className="task-toolbar">
                         <div className="toolbar-scope">
                           <span>
@@ -1026,16 +967,4 @@ function Workspace() {
       </TooltipProvider>
     </MotionConfig>
   );
-}
-function localDateAt(at: string, tz: string) {
-  try {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: tz,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date(at));
-  } catch {
-    return at.slice(0, 10);
-  }
 }

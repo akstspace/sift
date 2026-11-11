@@ -26,9 +26,9 @@ describe("recognizing a Sift call", () => {
     expect(parseSiftCommand(command)).toBeNull();
   });
   it("finds Sift by its file name, after environment assignments, with flags as the CLI reads them", () => {
-    const call = parseSiftCommand(`TZ=UTC NO_COLOR=1 ./sift-development-chat --data /d tasks update task_1 --revision=3 --today --status done --tags= --tags bills --wait`)!;
+    const call = parseSiftCommand(`TZ=UTC NO_COLOR=1 ./sift-development-chat --data /d tasks update task_1 --revision=3 --yes --status done --tags= --tags bills --wait`)!;
     expect(call.pos).toEqual(["tasks", "update", "task_1"]);
-    expect(call.flags).toMatchObject({ data: "/d", revision: "3", today: "true", status: "done", tags: "bills", wait: "true" });
+    expect(call.flags).toMatchObject({ data: "/d", revision: "3", yes: "true", status: "done", tags: "bills", wait: "true" });
     expect(call.lists.tags).toEqual(["", "bills"]);
     expect(parseSiftCommand("sift --json")).toBeNull();
     expect(parseSiftCommand("sifter tasks list")).toBeNull();
@@ -50,14 +50,14 @@ describe("recognizing a Sift call", () => {
 
 describe("describing what a Sift call did", () => {
   it("shows an added task with what it was given, and a pending verb while it runs", () => {
-    const call = sift("tasks add --title 'Renew passport' --today --priority high --due-date 2026-11-14 --project proj_home --tags tag_bills,tag_x --status open --parent task_p --attachment img_1");
+    const call = sift("tasks add --title 'Renew passport' --priority high --due-date 2026-11-14 --project proj_home --tags tag_bills,tag_x --status open --parent task_p --attachment img_1");
     const pending = describeSiftOp(call, null, lookups);
     expect(pending.verb).toBe("Adding task…");
     expect(pending.tasks).toEqual([{ id: "", title: "Renew passport" }]);
     const op = describeSiftOp(call, ok({ task: { id: "task_new", title: "Renew passport", status: "open" }, potentialDuplicates: [{}, {}] }), lookups);
     expect(op).toMatchObject({ verb: "Added task", emphasis: "change", icon: "task", detail: "2 possible duplicates" });
     expect(op.tasks[0]).toMatchObject({ id: "task_new", title: "Renew passport" });
-    expect(op.changes).toEqual(["Added to Today", expect.stringMatching(/^Due \w+, \w+ 14|^Due/), "High priority", "In Home", "Tagged Bills, tag_x", "Under “Parent task”", "Attached an image"]);
+    expect(op.changes).toEqual([expect.stringMatching(/^Due \w+, \w+ 14|^Due/), "High priority", "In Home", "Tagged Bills, tag_x", "Under “Parent task”", "Attached an image"]);
     expect(describeSiftOp(sift("tasks add --file task.json --priority none"), ok({ task: { id: "t" } }), lookups).changes).toEqual(["From a file"]);
   });
   it("names the change an update made", () => {
@@ -65,8 +65,8 @@ describe("describing what a Sift call did", () => {
     expect(update("--status done --reason 'Paid'", { id: "task_1", status: "done" })).toMatchObject({ verb: "Completed task", changes: [], quote: "Paid" });
     expect(update("--status progress")).toMatchObject({ verb: "Moved to In progress", changes: [] });
     expect(update("--status mystery --title X")).toMatchObject({ verb: "Updated task", changes: ["Renamed to “X”", "Moved to mystery"] });
-    expect(update("--today=false --due-date= --snoozed-until 2026-11-20 --project= --tags= --parent= --description x --icon mail").changes)
-      .toEqual(["Removed from Today", "Removed due date", expect.stringMatching(/^Snoozed until/), "Removed from project", "Removed tags", "Made top-level", "Edited notes", "Changed icon"]);
+    expect(update("--due-date= --snoozed-until 2026-11-20 --project= --tags= --parent= --description x --icon mail").changes)
+      .toEqual(["Removed due date", expect.stringMatching(/^Snoozed until/), "Removed from project", "Removed tags", "Made top-level", "Edited notes", "Changed icon"]);
     expect(update("--snoozed-until= --due-date soon --parent task_zz --file t.json").changes).toEqual(["Due soon", "Unsnoozed", "Under “task_zz”"]);
     expect(update("--file t.json").changes).toEqual(["Updated from a file"]);
     // The workspace's current title wins over what the command printed.

@@ -133,9 +133,9 @@ function Unavailable({ info, retry }: { info: ChatInfo | null; retry: () => void
 
 function EmptyChat({ view, snapshot, onPick }: { view: ChatView; snapshot: Snapshot; onPick: (text: string) => void }) {
   const task = view.context.match(/Open task: (.+?) \(task_/)?.[1];
-  const today = snapshot.tasks.some(t => t.today && t.status !== "done" && !t.deletedAt);
+  const open = snapshot.tasks.some(t => t.status !== "done" && !t.deletedAt && !t.archivedAt && !t.mergedInto);
   const ideas = [
-    task ? `Break “${task}” into smaller steps` : today ? "What should I focus on today?" : "What’s on my plate this week?",
+    task ? `Break “${task}” into smaller steps` : open ? "What should I focus on today?" : "What’s on my plate this week?",
     "Add a task: ",
     snapshot.runs.length ? "What did my agents do today?" : "Help me set up a morning planning job",
     "Find tasks that look like duplicates",

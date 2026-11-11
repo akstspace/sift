@@ -223,8 +223,8 @@ def demo(cli):
     tasks = json.loads(bash(sift + "tasks list")()[0] or "[]")
     send({"type": "turn_end"}); send({"type": "turn_start"})
     tool("call_dupes", "bash", {"command": sift + "tasks duplicates --title 'Renew passport'"}, bash(sift + "tasks duplicates --title 'Renew passport'"))
-    tool("call_add", "bash", {"command": sift + "tasks add --title 'Renew passport' --today --priority high --due-date 2026-11-14 --actor chat"},
-         bash(sift + "tasks add --title 'Renew passport' --today --priority high --due-date 2026-11-14 --actor chat"))
+    tool("call_add", "bash", {"command": sift + "tasks add --title 'Renew passport' --priority high --due-date 2026-11-14 --actor chat"},
+         bash(sift + "tasks add --title 'Renew passport' --priority high --due-date 2026-11-14 --actor chat"))
     open_tasks = [t for t in tasks if t.get("status") != "done" and not t.get("deletedAt")]
     if open_tasks:
         t = open_tasks[0]
@@ -236,7 +236,7 @@ def demo(cli):
     tool("call_ls", "bash", {"command": "ls -1 ~/Documents | head -5"}, lambda: ("Invoices\nNotes\nPhotos\nReceipts\nTaxes", False), 0.3)
     tool("call_which", "bash", {"command": "printf '\\n--- slk on PATH ---\\n'; command -v slk"}, lambda: ("\n--- slk on PATH ---\n\n\nCommand exited with code 1", True), 0.2)
     tool("call_edit", "edit", {"path": os.path.expanduser("~/Notes/passport.md"), "oldText": "Form DS-82 needed", "newText": "Form DS-82 needed\nPhoto booked for Thursday"}, lambda: ("Edited 1 place", False), 0.2)
-    say("Done. Here's where things stand:\n\n- Added **Renew passport** for today, due Nov 14, marked high priority.\n- Marked one finished task as done.\n- One update failed because that task doesn't exist, so I left it alone.\n\n| Next | When |\n|---|---|\n| Fill in form DS-82 | Today |\n| Passport photo | Thursday |\n\nWant me to set a reminder for the photo?")
+    say("Done. Here's where things stand:\n\n- Added **Renew passport**, due Nov 14, marked high priority.\n- Marked one finished task as done.\n- One update failed because that task doesn't exist, so I left it alone.\n\n| Next | When |\n|---|---|\n| Fill in form DS-82 | Today |\n| Passport photo | Thursday |\n\nWant me to set a reminder for the photo?")
     finish()
 
 SESSIONS = [
@@ -251,7 +251,7 @@ SESSIONS = [
     ("16:40", 20, "Filed October expenses", "admin", "email", "", "Submitted 4 receipts to finance.", ""),
     ("18:10", 30, "1:1 with Sam", "meeting", "calendar", "", "Talked about the Q1 roadmap and on-call load.", ""),
     ("19:00", 45, "Fixed the flaky backup test", "code", "github", "https://github.com/akstspace/sift/pull/88", "Waited for the run to leave the active set before asserting.", ""),
-    ("21:00", 25, "Planned tomorrow in Sift", "other", "sift", "", "Moved 3 tasks to Today and snoozed the vendor follow-up.", ""),
+    ("21:00", 25, "Planned tomorrow in Sift", "other", "sift", "", "Moved 3 tasks to In progress and snoozed the vendor follow-up.", ""),
 ]
 
 def activity_demo(cli, text):

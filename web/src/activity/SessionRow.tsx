@@ -195,13 +195,13 @@ export function SessionRow({ session: s, tz, hovered, onHover, flash, tasks, cat
   );
 }
 
-/** Search the person's open tasks (and today's finished ones) to link. */
+/** Search the person's tasks to link: open ones first, then finished ones, newest first. */
 export function TaskPicker({ open, onOpenChange, tasks, catalog, onPick, children, anchor, current = "" }: {
   open: boolean; onOpenChange: (v: boolean) => void; tasks: Map<string, Task>; catalog: CatalogIcon[]; onPick: (t: Task) => void; children: ReactNode; anchor?: boolean; current?: string;
 }) {
   const [query, setQuery] = useState("");
   const list = useMemo(() => [...tasks.values()].filter(t => !t.deletedAt && !t.mergedInto && !t.archivedAt)
-    .sort((a, b) => Number(a.status === "done") - Number(b.status === "done") || Number(b.today) - Number(a.today) || b.updatedAt.localeCompare(a.updatedAt)), [tasks]);
+    .sort((a, b) => Number(a.status === "done") - Number(b.status === "done") || b.updatedAt.localeCompare(a.updatedAt)), [tasks]);
   const q = query.trim().toLocaleLowerCase();
   const matches = (q ? list.filter(t => t.title.toLocaleLowerCase().includes(q)) : list).slice(0, 60);
   return (
@@ -217,8 +217,7 @@ export function TaskPicker({ open, onOpenChange, tasks, catalog, onPick, childre
                 <CommandItem key={t.id} value={t.id} onSelect={() => { onPick(t); onOpenChange(false); setQuery(""); }}>
                   {t.status === "done" ? <DoneIcon size={15} aria-hidden className="session-task-done" /> : <TaskIcon id={t.icon} catalog={catalog} size={15} />}
                   <span className="task-picker-title">{t.title}</span>
-                  {t.id === current ? <span className="task-picker-current"><Check size={14} aria-hidden />Linked</span>
-                    : t.today && t.status !== "done" && <span className="task-picker-today">Today</span>}
+                  {t.id === current && <span className="task-picker-current"><Check size={14} aria-hidden />Linked</span>}
                 </CommandItem>
               ))}
             </CommandGroup>

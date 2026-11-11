@@ -174,13 +174,12 @@ describe("task sheet read, draft, and save contracts", () => {
     await user.pointer({ target: document.querySelector(".detail-backdrop")!, keys: "[MouseLeft]" });
     expect(props.onClose).toHaveBeenCalledOnce();
   });
-  it("persists explicit focus changes and explains unnamed local images and history updates", async () => {
+  it("explains unnamed local images and history updates, and offers no Focus choice", async () => {
     const task = taskFixture({ description: "![](/api/images/img_" + "a".repeat(32) + ")" });
     const history: HistoryEntry = { id: 1, kind: "task", entityId: task.id, actor: "user", reason: "", at: task.updatedAt, before: { ...task, revision: 0 }, after: task };
-    const { props, user } = mount(task, {}, [history]);
+    mount(task, {}, [history]);
     expect(screen.getByRole("img", { name: "Task attachment" })).toBeDefined(); expect(await screen.findByText("Updated this task")).toBeDefined();
-    await user.click(screen.getByRole("combobox", { name: "Focus" })); await user.click(screen.getByRole("option", { name: "All tasks only" }));
-    await user.click(save()); expect(props.onSave).toHaveBeenCalledWith(expect.objectContaining({ today: false }));
+    expect(screen.queryByRole("combobox", { name: "Focus" })).toBeNull();
   });
   it("keeps an optional blank description read-first and enters writing only by explicit action", async () => {
     const { user } = mount(taskFixture({ description: "" }));
@@ -334,7 +333,7 @@ describe("task sheet read, draft, and save contracts", () => {
   it("saves full task properties, civil dates, and parent assignment without native selects", async () => {
     const parent = taskFixture({ id: "parent", title: "Parent project task" }), task = taskFixture();
     const { props, user } = mount(task, { tasks: [task, parent], projects: [{ id: "p", name: "Project evidence", color: "sea", icon: "folder", archived: false }] });
-    for (const [label, name] of [["Status", "In progress"], ["Priority", "High"], ["Project", "Project evidence"], ["Focus", "Today"], ["Parent task", parent.title]]) {
+    for (const [label, name] of [["Status", "In progress"], ["Priority", "High"], ["Project", "Project evidence"], ["Parent task", parent.title]]) {
       await user.click(screen.getByRole("combobox", { name: label })); await user.click(await screen.findByRole("option", { name }));
     }
     for (const label of ["Due date", "Snooze until"]) {
@@ -342,7 +341,7 @@ describe("task sheet read, draft, and save contracts", () => {
       await user.click(screen.getByRole("button", { name: new RegExp(`^${label} (Set due date|Set date)$`) })); await user.click(screen.getByRole("button", { name: "Today" }));
     }
     await user.click(save());
-    expect(props.onSave.mock.calls[0][0]).toMatchObject({ status: "progress", priority: "high", project: "p", today: true, parentId: parent.id, dueDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), snoozedUntil: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+    expect(props.onSave.mock.calls[0][0]).toMatchObject({ status: "progress", priority: "high", project: "p", parentId: parent.id, dueDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), snoozedUntil: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
   });
   it("opens attachments by their stored names and invokes the local picker only on request", async () => {
     const task = taskFixture({ attachments: ["img_named"] });

@@ -38,8 +38,9 @@ describe("deterministic motion contracts", () => {
   it("derives direction from the route hierarchy before sidebar order", () => {
     expect(pageDirection({ page: "organization", project: "" }, { page: "backlog", project: "p" })).toEqual({ sign: 1, depth: true });
     expect(pageDirection({ page: "backlog", project: "p" }, { page: "organization", project: "" })).toEqual({ sign: -1, depth: true });
-    expect(pageDirection({ page: "backlog", project: "p" }, { page: "today", project: "" })).toEqual({ sign: -1, depth: false });
-    expect(pageDirection({ page: "today", project: "" }, { page: "jobs", project: "" })).toEqual({ sign: 1, depth: false });
+    expect(pageDirection({ page: "jobs", project: "p" }, { page: "backlog", project: "" })).toEqual({ sign: -1, depth: false });
+    expect(pageDirection({ page: "backlog", project: "" }, { page: "jobs", project: "" })).toEqual({ sign: 1, depth: false });
+    expect(pageOrder[0]).toBe("backlog"); expect(pageOrder).not.toContain("today");
     expect(pageOrder).toContain("organization");
   });
   it.each([true, false])("lets arriving cards settle with reduced=%s", reduced => {

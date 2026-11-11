@@ -1,6 +1,6 @@
 ---
 name: sift
-description: Manage the user's local Sift tasks, subtasks, comments, daily work, observations, projects, tags, images, icons, duplicates, and scheduled Pi jobs using the sift CLI. Use when the user asks to add, inspect, organize, complete, comment on, or update their Sift work, or when reporting actionable observations from your own context.
+description: Manage the user's local Sift tasks, subtasks, comments, observations, projects, tags, images, icons, duplicates, and scheduled Pi jobs using the sift CLI. Use when the user asks to add, inspect, organize, complete, comment on, or update their Sift work, or when reporting actionable observations from your own context.
 metadata:
   version: 0.1.0
 ---
@@ -14,7 +14,7 @@ Use the installed `sift` executable from any working directory. Start with `sift
 1. `sift tasks list` or `sift tasks search "query"` to inspect current work.
 2. `sift tasks duplicates --title "Proposed task"` before creating a task. Inspect IDs, statuses, and match reasons. Similarity is a suggestion, not authorization to merge.
 3. `sift columns list`, `sift projects list`, `sift tags list`, and `sift icons search "<task topic>"` discover stable IDs. Search the actual task topic, not a fixed example. Do not create or change columns; only the human can do that in the UI. Icons come from the catalog, not custom uploads.
-4. `sift tasks add --title "..." --today --actor "your-agent-name" --source-key "stable-source-id" --request-id "unique-operation-id"` creates work. Stable source keys identify the same observation; if one exists, read and update it instead of creating another. Reuse a request ID only for a retry with identical content.
+4. `sift tasks add --title "..." --actor "your-agent-name" --source-key "stable-source-id" --request-id "unique-operation-id"` creates work. Stable source keys identify the same observation; if one exists, read and update it instead of creating another. Reuse a request ID only for a retry with identical content.
 5. Before acting, `sift tasks get TASK_ID` and read its activity, including comments. Use `sift tasks comments TASK_ID` for comment-only context. Before editing, use `--revision N` with the latest revision. On conflict, re-read and reconsider; never blindly overwrite human work.
 6. `sift tasks update TASK_ID --revision N --status done --reason "What was addressed and why" --actor "your-agent-name"`. Completion/reopening and reversing a user's decision require reasons. Evidence is optional, but attach useful file/commit/URL references in the description. Do not claim verification you did not perform.
    Keep status current: when what you find shows a task's state changed (finished, started, or waiting on someone), move it to the matching existing column with a reason that cites the evidence, instead of only commenting. Comment when the evidence is partial or ambiguous, and don't reverse a status the person set after the evidence you rely on. Every change appears in the task's activity and can be undone. A status you change puts a small AI badge on the task (`agentChange` names you) until the person reviews it; you can't set or clear it.

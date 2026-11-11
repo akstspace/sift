@@ -1,5 +1,5 @@
 export interface CheckItem { id: string; title: string; done: boolean }
-export interface Task { id:string;title:string;description:string;status:string;priority:string;project:string;tags:string[];icon:string;parentId:string;today:boolean;dueDate:string;snoozedUntil:string;checklist:CheckItem[];attachments:string[];source:string;sourceKey:string;mergedInto:string;deletedAt:string;completedAt:string;archivedAt:string;createdAt:string;updatedAt:string;actor:string;revision:number;
+export interface Task { id:string;title:string;description:string;status:string;priority:string;project:string;tags:string[];icon:string;parentId:string;dueDate:string;snoozedUntil:string;checklist:CheckItem[];attachments:string[];source:string;sourceKey:string;mergedInto:string;deletedAt:string;completedAt:string;archivedAt:string;createdAt:string;updatedAt:string;actor:string;revision:number;
   /** The agent whose status change awaits the person's review; Sift sets and clears it. */
   agentChange?:string }
 export interface Column { id:string;name:string;color:string;order:number }
@@ -23,7 +23,7 @@ export interface Duplicate {id:string;title:string;status:string;score:number;re
 export interface CatalogIcon {id:string;name:string;category:string;aliases:string[];symbol?:string}
 export interface PiModel {id:string;name:string;provider:string;reasoning:boolean;input:string[];contextWindow:number}
 export interface PiInfo {connected:boolean;version:string;path:string;models:PiModel[];thinking:{levels?:unknown[]};state:{model?:PiModel;thinkingLevel?:string}}
-export const newTask = (parentId=''):Task=>({id:'',title:'',description:'',status:'open',priority:'none',project:'',tags:[],icon:'circle-check',parentId,today:true,dueDate:'',snoozedUntil:'',checklist:[],attachments:[],source:'user',sourceKey:'',mergedInto:'',deletedAt:'',completedAt:'',archivedAt:'',createdAt:'',updatedAt:'',actor:'user',revision:0})
+export const newTask = (parentId=''):Task=>({id:'',title:'',description:'',status:'open',priority:'none',project:'',tags:[],icon:'circle-check',parentId,dueDate:'',snoozedUntil:'',checklist:[],attachments:[],source:'user',sourceKey:'',mergedInto:'',deletedAt:'',completedAt:'',archivedAt:'',createdAt:'',updatedAt:'',actor:'user',revision:0})
 /** One work session on My activity. Times are UTC instants. */
 export interface ActivityEntry {id:string;start:string;end:string;title:string;summary:string;category:string;source:string;link:string;taskId:string;sourceKey:string;actor:string;edited?:boolean;createdAt:string;updatedAt:string;revision:number}
 export interface ActivityWindow {from:string;to:string}

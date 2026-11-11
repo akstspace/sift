@@ -63,9 +63,9 @@ def main():
     manifest = {"project": project, "tag": tag, "tasks": [], "workspace": str(workspace)}
     today = dt.datetime.now(dt.timezone.utc).date()
 
-    def task(key, title, status="open", priority="none", parent="", focus=True, due="", icon="circle-check", checklist=None):
+    def task(key, title, status="open", priority="none", parent="", due="", icon="circle-check", checklist=None):
         record = {"title": title, "status": status, "priority": priority, "parentId": parent,
-            "today": focus, "dueDate": due, "icon": icon, "project": project, "tags": [tag],
+            "dueDate": due, "icon": icon, "project": project, "tags": [tag],
             "description": "**Demo task — safe to edit.**\n\nThis is sample content for exploring Sift, not a claim that work has been performed.\n\n- Open task details to try Markdown and the checklist.\n- Change status, priority, or dates. Every saved change has a history.\n- All demo content belongs to **Sift demo** and can be removed later.",
             "source": "sift-demo", "sourceKey": "demo-v1:" + key,
             "attachments": [], "checklist": checklist or []}
@@ -85,7 +85,7 @@ def main():
     task("capture", "Capture an idea before it disappears", icon="bulb")
     task("long", "Check how a longer task title wraps without hiding the important next action", priority="low", icon="file-text")
     task("complete", "Try completing and reopening a task", "done", icon="circle-check")
-    task("backlog", "Keep a promising idea for later", focus=False, icon="bulb")
+    task("backlog", "Keep a promising idea for later", icon="bulb")
     task("due", "Make time for a follow-up", priority="urgent", due=str(today-dt.timedelta(days=1)), icon="calendar")
     print(f"Added {len(manifest['tasks'])} labeled demo tasks. Manifest: {manifest_path}")
 
